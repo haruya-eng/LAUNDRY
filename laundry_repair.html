@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>コインランドリー 修理状況</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Hiragino Kaku Gothic ProN','Hiragino Sans','Meiryo',sans-serif;font-size:15px;color:#1a1a1a;background:#f5f4f0}
+.app{max-width:960px;margin:0 auto;padding:1.25rem 1rem}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:0 0 1rem;border-bottom:1px solid #e0ddd6;margin-bottom:1.25rem}
+.logo{font-size:16px;font-weight:600;letter-spacing:.02em}
+.add-btn{padding:6px 16px;font-size:13px;border:1px solid #c8c5bc;border-radius:8px;cursor:pointer;background:#fff;color:#1a1a1a;transition:background .15s}
+.add-btn:hover{background:#f0ede8}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:1.25rem}
+.stat{background:#fff;border-radius:10px;padding:.8rem 1rem;border:1px solid #e8e5de}
+.stat-label{font-size:12px;color:#888;margin-bottom:3px}
+.stat-num{font-size:22px;font-weight:600}
+.store-tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:1rem}
+.stab{padding:4px 12px;font-size:12px;border:1px solid #ddd;border-radius:99px;cursor:pointer;background:#fff;color:#666;white-space:nowrap;transition:all .15s}
+.stab.active{background:#1a1a1a;color:#fff;border-color:#1a1a1a}
+.search-bar{display:flex;gap:8px;margin-bottom:1rem}
+.search-bar input{flex:1;padding:7px 12px;font-size:13px;border:1px solid #ddd;border-radius:8px;background:#fff;color:#1a1a1a}
+.search-bar select{padding:7px 10px;font-size:13px;border:1px solid #ddd;border-radius:8px;background:#fff;color:#1a1a1a}
+.section-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem}
+.section-title{font-size:13px;font-weight:500;color:#888}
+.tickets{display:flex;flex-direction:column;gap:8px}
+.ticket{background:#fff;border:1px solid #e8e5de;border-radius:12px;padding:.9rem 1.1rem;cursor:pointer;transition:border-color .15s,box-shadow .15s}
+.ticket:hover{border-color:#bbb;box-shadow:0 2px 8px rgba(0,0,0,.06)}
+.ticket-top{display:flex;align-items:center;gap:8px;margin-bottom:5px;flex-wrap:wrap}
+.machine-id{font-weight:600;font-size:14px}
+.store-tag{font-size:11px;padding:2px 8px;background:#f0ede8;border-radius:99px;color:#666}
+.badge{font-size:11px;font-weight:600;padding:2px 9px;border-radius:99px}
+.b-new{background:#FEF3C7;color:#92400E}
+.b-progress{background:#DBEAFE;color:#1E40AF}
+.b-done{background:#D1FAE5;color:#065F46}
+.b-waiting{background:#FCE7F3;color:#831843}
+.ticket-desc{font-size:13px;color:#555;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ticket-notice{font-size:12px;color:#1E40AF;margin-bottom:3px;display:flex;align-items:flex-start;gap:4px}
+.ticket-meta{display:flex;gap:16px;font-size:12px;color:#aaa}
+.detail-panel{display:none;position:fixed;top:0;right:0;width:380px;height:100%;background:#fff;border-left:1px solid #e0ddd6;z-index:100;overflow-y:auto;padding:1.25rem;box-shadow:-4px 0 20px rgba(0,0,0,.08)}
+.detail-panel.open{display:block}
+.panel-close{float:right;background:none;border:none;font-size:20px;cursor:pointer;color:#aaa;line-height:1}
+.panel-title{font-size:15px;font-weight:600;margin-bottom:1.1rem;padding-right:24px;line-height:1.4}
+.dl{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;margin-bottom:1rem}
+.dt{font-size:13px;color:#888}
+.dd{font-size:13px;font-weight:500}
+.form-label{display:block;font-size:12px;color:#888;margin-bottom:3px}
+.status-select,.notice-ta{width:100%;padding:7px 10px;font-size:13px;border:1px solid #ddd;border-radius:8px;background:#fff;color:#1a1a1a;margin-bottom:.75rem}
+.notice-ta{min-height:56px;resize:vertical;font-family:inherit}
+.save-btn{padding:4px 14px;font-size:12px;border:1px solid #ddd;border-radius:6px;background:#fff;cursor:pointer;margin-bottom:.85rem}
+.save-btn:hover{background:#f5f4f0}
+.panel-sep{font-size:12px;font-weight:500;color:#aaa;padding:6px 0 5px;margin-top:.5rem;border-top:1px solid #f0ede8}
+.comment-list{margin-bottom:.75rem}
+.comment{background:#f9f8f5;border-radius:8px;padding:.55rem .75rem;margin-bottom:5px;font-size:13px}
+.comment-meta{font-size:11px;color:#bbb;margin-top:2px}
+.comment-form{display:flex;gap:6px}
+.comment-form input{flex:1;font-size:13px;padding:7px 10px;border:1px solid #ddd;border-radius:8px;background:#fff;color:#1a1a1a}
+.comment-form button{padding:6px 14px;font-size:13px;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer}
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.3);z-index:99}
+.overlay.open{display:block}
+.modal{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;border:1px solid #ddd;border-radius:14px;padding:1.5rem;width:360px;z-index:101;max-height:92vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,.12)}
+.modal.open{display:block}
+.modal h3{font-size:15px;font-weight:600;margin-bottom:1rem}
+.form-row{margin-bottom:.75rem}
+.form-row label{display:block;font-size:12px;color:#888;margin-bottom:3px}
+.form-row input,.form-row select,.form-row textarea{width:100%;padding:7px 10px;font-size:13px;border:1px solid #ddd;border-radius:8px;background:#fff;color:#1a1a1a;font-family:inherit}
+.form-row textarea{min-height:60px;resize:vertical}
+.modal-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:1rem}
+.modal-btns button{padding:7px 18px;font-size:13px;border:1px solid #ddd;border-radius:8px;cursor:pointer;background:#fff}
+.modal-btns .primary{background:#1a1a1a;color:#fff;border-color:#1a1a1a}
+.empty{text-align:center;padding:2.5rem;color:#bbb;font-size:13px}
+.loading{text-align:center;padding:2rem;color:#aaa;font-size:13px}
+.sync-dot{width:7px;height:7px;border-radius:50%;background:#22c55e;display:inline-block;margin-right:5px;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <span class="logo"><span class="sync-dot"></span>コインランドリー 修理状況</span>
+    <button class="add-btn" onclick="openModal()">+ 新規登録</button>
+  </div>
+  <div class="stats">
+    <div class="stat"><div class="stat-label">受付中</div><div class="stat-num" id="cnt-new" style="color:#D97706">0</div></div>
+    <div class="stat"><div class="stat-label">対応中</div><div class="stat-num" id="cnt-prog" style="color:#2563EB">0</div></div>
+    <div class="stat"><div class="stat-label">部品待ち</div><div class="stat-num" id="cnt-wait" style="color:#9D174D">0</div></div>
+    <div class="stat"><div class="stat-label">完了</div><div class="stat-num" id="cnt-done" style="color:#059669">0</div></div>
+  </div>
+  <div class="store-tabs" id="store-tabs"></div>
+  <div class="search-bar">
+    <input type="text" id="search-text" placeholder="機械ID・症状・店舗名で検索..." oninput="renderList()">
+    <select id="search-status" onchange="renderList()">
+      <option value="">すべてのステータス</option>
+      <option value="受付中">受付中</option>
+      <option value="対応中">対応中</option>
+      <option value="部品待ち">部品待ち</option>
+      <option value="完了">完了</option>
+    </select>
+  </div>
+  <div class="section-head">
+    <span class="section-title" id="list-label">全店舗 — 修理チケット一覧</span>
+  </div>
+  <div class="tickets" id="ticket-list"><div class="loading">読み込み中...</div></div>
+</div>
+
+<div class="overlay" id="overlay" onclick="closeAll()"></div>
+
+<div class="detail-panel" id="detail-panel">
+  <button class="panel-close" onclick="closeAll()">×</button>
+  <div class="panel-title" id="panel-title"></div>
+  <div id="panel-body"></div>
+</div>
+
+<div class="modal" id="add-modal">
+  <h3>新規修理チケット登録</h3>
+  <div class="form-row"><label>店舗</label><select id="f-store"></select></div>
+  <div class="form-row"><label>機械ID</label><input id="f-mid" placeholder="例: W-03, D-01"></div>
+  <div class="form-row"><label>機械種別</label>
+    <select id="f-type"><option>洗濯機</option><option>乾燥機</option><option>洗濯乾燥機</option><option>両替機</option><option>その他</option></select>
+  </div>
+  <div class="form-row"><label>故障・症状</label><textarea id="f-desc" placeholder="例: 扉が開かない、エラーコードE3が表示"></textarea></div>
+  <div class="form-row"><label>お知らせ・コメント（省略可）</label><textarea id="f-notice" placeholder="例: 現在修理対応中です。ご不便をおかけして申し訳ありません。"></textarea></div>
+  <div class="modal-btns">
+    <button onclick="closeModal()">キャンセル</button>
+    <button class="primary" onclick="addTicket()">登録</button>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://qokifxfhtddkubqwxcpw.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_PS1_yd3SaR2gRBcuqNx2ow_e8ctD7z0';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const STORES = [
+  'えのくま店','湯布院店','志手店','柳ヶ浦店',
+  '豊後高田店','四日市店','なかどの店','古国府店',
+  '高城店','城野店','下郡店','西大分店',
+  '大在北店','市浜店','法鏡寺店','城井店'
+];
+const STATUSES = ['受付中','対応中','部品待ち','完了'];
+const BADGE_CLS = {受付中:'b-new',対応中:'b-progress',部品待ち:'b-waiting',完了:'b-done'};
+
+let tickets = [];
+let selectedStore = '';
+let openTicketId = null;
+
+async function loadTickets() {
+  const { data, error } = await sb.from('tickets').select('*').order('date', { ascending: false });
+  if (error) { console.error(error); return; }
+  tickets = data || [];
+  renderStoreTabs();
+  renderList();
+}
+
+sb.channel('tickets-changes')
+  .on('postgres_changes', { event: '*', schema: 'public', table: 'tickets' }, () => {
+    loadTickets();
+  })
+  .subscribe();
+
+function renderStoreTabs() {
+  document.getElementById('store-tabs').innerHTML =
+    `<button class="stab ${selectedStore===''?'active':''}" onclick="setStore('')">全店舗</button>`
+    + STORES.map(s => {
+      const cnt = tickets.filter(t => t.store === s && t.status !== '完了').length;
+      return `<button class="stab ${selectedStore===s?'active':''}" onclick="setStore('${s}')">${s}${cnt>0?` (${cnt})`:''}</button>`;
+    }).join('');
+}
+
+function setStore(s) { selectedStore = s; renderStoreTabs(); renderList(); }
+
+function renderStats() {
+  const src = selectedStore ? tickets.filter(t => t.store === selectedStore) : tickets;
+  document.getElementById('cnt-new').textContent = src.filter(t => t.status==='受付中').length;
+  document.getElementById('cnt-prog').textContent = src.filter(t => t.status==='対応中').length;
+  document.getElementById('cnt-wait').textContent = src.filter(t => t.status==='部品待ち').length;
+  document.getElementById('cnt-done').textContent = src.filter(t => t.status==='完了').length;
+}
+
+function renderList() {
+  const q = document.getElementById('search-text').value.toLowerCase();
+  const st = document.getElementById('search-status').value;
+  document.getElementById('list-label').textContent = (selectedStore || '全店舗') + ' — 修理チケット一覧';
+  const filtered = tickets.filter(t => {
+    const mS = !selectedStore || t.store === selectedStore;
+    const mQ = !q || (t.mid||'').toLowerCase().includes(q) || (t.description||'').toLowerCase().includes(q) || (t.store||'').toLowerCase().includes(q);
+    const mSt = !st || t.status === st;
+    return mS && mQ && mSt;
+  });
+  const el = document.getElementById('ticket-list');
+  if (!filtered.length) { el.innerHTML = '<div class="empty">該当するチケットがありません</div>'; renderStats(); return; }
+  el.innerHTML = filtered.map(t => `
+    <div class="ticket" onclick="openDetail('${t.id}')">
+      <div class="ticket-top">
+        <span class="machine-id">${t.mid||''}</span>
+        <span class="badge ${BADGE_CLS[t.status]||''}">${t.status||''}</span>
+        <span class="store-tag">${t.store||''}</span>
+        <span style="font-size:12px;color:#aaa">${t.mid_type||''}</span>
+      </div>
+      <div class="ticket-desc">${t.description||''}</div>
+      ${t.notice ? `<div class="ticket-notice">📢 ${t.notice}</div>` : ''}
+      <div class="ticket-meta"><span>${t.date||''}</span><span>コメント ${(t.comments||[]).length}件</span></div>
+    </div>`).join('');
+  renderStats();
+}
+
+function openDetail(id) {
+  const t = tickets.find(x => x.id === id); if (!t) return;
+  openTicketId = id;
+  document.getElementById('panel-title').textContent = `${t.store} ／ ${t.mid} (${t.mid_type})`;
+  const comments = t.comments || [];
+  document.getElementById('panel-body').innerHTML = `
+    <dl class="dl">
+      <dt class="dt">チケットID</dt><dd class="dd">${t.id}</dd>
+      <dt class="dt">発生日</dt><dd class="dd">${t.date}</dd>
+      <dt class="dt">症状</dt><dd class="dd">${t.description||''}</dd>
+    </dl>
+    <label class="form-label">ステータス変更</label>
+    <select class="status-select" onchange="changeStatus('${t.id}',this.value)">
+      ${STATUSES.map(s=>`<option ${s===t.status?'selected':''}>${s}</option>`).join('')}
+    </select>
+    <label class="form-label">お知らせ・コメント</label>
+    <textarea class="notice-ta" id="notice-text">${t.notice||''}</textarea>
+    <button class="save-btn" onclick="saveNotice('${t.id}')">保存</button>
+    <div class="panel-sep">作業コメント履歴</div>
+    <div class="comment-list" id="comment-list-${t.id}">
+      ${comments.map(c=>`<div class="comment">${c.text}<div class="comment-meta">${c.author} ・ ${c.time}</div></div>`).join('') || '<div style="font-size:13px;color:#ccc;padding:.2rem 0">コメントなし</div>'}
+    </div>
+    <div class="comment-form">
+      <input type="text" id="comment-input" placeholder="作業内容・メモを追加...">
+      <button onclick="addComment('${t.id}')">送信</button>
+    </div>`;
+  document.getElementById('detail-panel').classList.add('open');
+  document.getElementById('overlay').classList.add('open');
+}
+
+async function changeStatus(id, val) {
+  await sb.from('tickets').update({ status: val }).eq('id', id);
+}
+
+async function saveNotice(id) {
+  const notice = document.getElementById('notice-text').value;
+  await sb.from('tickets').update({ notice }).eq('id', id);
+  alert('保存しました');
+}
+
+async function addComment(id) {
+  const inp = document.getElementById('comment-input');
+  const text = inp.value.trim(); if (!text) return;
+  const t = tickets.find(x => x.id === id);
+  const now = new Date();
+  const time = `${(now.getMonth()+1).toString().padStart(2,'0')}/${now.getDate().toString().padStart(2,'0')} ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
+  const comments = [...(t.comments||[]), { text, author:'スタッフ', time }];
+  await sb.from('tickets').update({ comments }).eq('id', id);
+  inp.value = '';
+}
+
+function openModal() {
+  document.getElementById('f-store').innerHTML = STORES.map(s => `<option ${s===selectedStore?'selected':''}>${s}</option>`).join('');
+  document.getElementById('add-modal').classList.add('open');
+  document.getElementById('overlay').classList.add('open');
+}
+function closeModal() {
+  document.getElementById('add-modal').classList.remove('open');
+  document.getElementById('overlay').classList.remove('open');
+}
+
+async function addTicket() {
+  const store = document.getElementById('f-store').value;
+  const mid = document.getElementById('f-mid').value.trim();
+  const mid_type = document.getElementById('f-type').value;
+  const description = document.getElementById('f-desc').value.trim();
+  const notice = document.getElementById('f-notice').value.trim();
+  if (!mid || !description) { alert('機械IDと故障内容は必須です'); return; }
+  const id = 'T' + Date.now();
+  const date = new Date().toISOString().slice(0, 10);
+  const { error } = await sb.from('tickets').insert([{ id, store, mid, mid_type, description, status:'受付中', date, notice, comments:[] }]);
+  if (error) { alert('登録に失敗しました: ' + error.message); return; }
+  closeModal();
+  ['f-mid','f-desc','f-notice'].forEach(i => document.getElementById(i).value = '');
+}
+
+function closeAll() {
+  document.getElementById('detail-panel').classList.remove('open');
+  document.getElementById('add-modal').classList.remove('open');
+  document.getElementById('overlay').classList.remove('open');
+}
+
+loadTickets();
+</script>
+</body>
+</html>

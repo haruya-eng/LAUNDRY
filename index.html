@@ -37,8 +37,8 @@ body{font-family:'Hiragino Kaku Gothic ProN','Hiragino Sans','Meiryo',sans-serif
 .b-done{background:#D1FAE5;color:#065F46}
 .b-waiting{background:#FCE7F3;color:#831843}
 .ticket-desc{font-size:13px;color:#555;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ticket-notice{font-size:12px;color:#1E40AF;margin-bottom:3px;display:flex;align-items:flex-start;gap:4px}
-.ticket-meta{display:flex;gap:16px;font-size:12px;color:#aaa}
+.ticket-notice{font-size:12px;color:#1E40AF;margin-bottom:3px}
+.ticket-meta{display:flex;gap:12px;font-size:12px;color:#aaa;flex-wrap:wrap}
 .detail-panel{display:none;position:fixed;top:0;right:0;width:380px;height:100%;background:#fff;border-left:1px solid #e0ddd6;z-index:100;overflow-y:auto;padding:1.25rem;box-shadow:-4px 0 20px rgba(0,0,0,.08)}
 .detail-panel.open{display:block}
 .panel-close{float:right;background:none;border:none;font-size:20px;cursor:pointer;color:#aaa;line-height:1}
@@ -47,9 +47,9 @@ body{font-family:'Hiragino Kaku Gothic ProN','Hiragino Sans','Meiryo',sans-serif
 .dt{font-size:13px;color:#888}
 .dd{font-size:13px;font-weight:500}
 .form-label{display:block;font-size:12px;color:#888;margin-bottom:3px}
-.status-select,.notice-ta{width:100%;padding:7px 10px;font-size:13px;border:1px solid #ddd;border-radius:8px;background:#fff;color:#1a1a1a;margin-bottom:.75rem}
+.status-select,.notice-ta,.date-input{width:100%;padding:7px 10px;font-size:13px;border:1px solid #ddd;border-radius:8px;background:#fff;color:#1a1a1a;margin-bottom:.75rem}
 .notice-ta{min-height:56px;resize:vertical;font-family:inherit}
-.save-btn{padding:4px 14px;font-size:12px;border:1px solid #ddd;border-radius:6px;background:#fff;cursor:pointer;margin-bottom:.85rem}
+.save-btn{padding:5px 14px;font-size:12px;border:1px solid #ddd;border-radius:6px;background:#fff;cursor:pointer;margin-bottom:.85rem;display:block}
 .save-btn:hover{background:#f5f4f0}
 .panel-sep{font-size:12px;font-weight:500;color:#aaa;padding:6px 0 5px;margin-top:.5rem;border-top:1px solid #f0ede8}
 .comment-list{margin-bottom:.75rem}
@@ -67,6 +67,8 @@ body{font-family:'Hiragino Kaku Gothic ProN','Hiragino Sans','Meiryo',sans-serif
 .form-row label{display:block;font-size:12px;color:#888;margin-bottom:3px}
 .form-row input,.form-row select,.form-row textarea{width:100%;padding:7px 10px;font-size:13px;border:1px solid #ddd;border-radius:8px;background:#fff;color:#1a1a1a;font-family:inherit}
 .form-row textarea{min-height:60px;resize:vertical}
+.date-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:.75rem}
+.date-row .form-row{margin-bottom:0}
 .modal-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:1rem}
 .modal-btns button{padding:7px 18px;font-size:13px;border:1px solid #ddd;border-radius:8px;cursor:pointer;background:#fff}
 .modal-btns .primary{background:#1a1a1a;color:#fff;border-color:#1a1a1a}
@@ -90,7 +92,7 @@ body{font-family:'Hiragino Kaku Gothic ProN','Hiragino Sans','Meiryo',sans-serif
   </div>
   <div class="store-tabs" id="store-tabs"></div>
   <div class="search-bar">
-    <input type="text" id="search-text" placeholder="機械ID・症状・店舗名で検索..." oninput="renderList()">
+    <input type="text" id="search-text" placeholder="機械番号・症状・店舗名で検索..." oninput="renderList()">
     <select id="search-status" onchange="renderList()">
       <option value="">すべてのステータス</option>
       <option value="受付中">受付中</option>
@@ -116,11 +118,15 @@ body{font-family:'Hiragino Kaku Gothic ProN','Hiragino Sans','Meiryo',sans-serif
 <div class="modal" id="add-modal">
   <h3>新規修理チケット登録</h3>
   <div class="form-row"><label>店舗</label><select id="f-store"></select></div>
-  <div class="form-row"><label>機械ID</label><input id="f-mid" placeholder="例: W-03, D-01"></div>
+  <div class="form-row"><label>機械番号</label><input id="f-mid" placeholder="例: W-03, D-01（不明な場合は空欄可）"></div>
   <div class="form-row"><label>機械種別</label>
-    <select id="f-type"><option>洗濯機</option><option>乾燥機</option><option>洗濯乾燥機</option><option>両替機</option><option>その他</option></select>
+    <select id="f-type"><option>洗濯機</option><option>乾燥機</option><option>洗濯乾燥機</option><option>スニーカーランドリー</option><option>両替機</option><option>その他</option></select>
   </div>
   <div class="form-row"><label>故障・症状</label><textarea id="f-desc" placeholder="例: 扉が開かない、エラーコードE3が表示"></textarea></div>
+  <div class="date-row">
+    <div class="form-row"><label>受付日/発生日</label><input type="date" id="f-received"></div>
+    <div class="form-row"><label>作業予定日</label><input type="date" id="f-scheduled"></div>
+  </div>
   <div class="form-row"><label>お知らせ・コメント（省略可）</label><textarea id="f-notice" placeholder="例: 現在修理対応中です。ご不便をおかけして申し訳ありません。"></textarea></div>
   <div class="modal-btns">
     <button onclick="closeModal()">キャンセル</button>
@@ -147,7 +153,7 @@ let selectedStore = '';
 let openTicketId = null;
 
 async function loadTickets() {
-  const { data, error } = await sb.from('tickets').select('*').order('date', { ascending: false });
+  const { data, error } = await sb.from('tickets').select('*').order('received_date', { ascending: false });
   if (error) { console.error(error); return; }
   tickets = data || [];
   renderStoreTabs();
@@ -201,7 +207,12 @@ function renderList() {
       </div>
       <div class="ticket-desc">${t.description||''}</div>
       ${t.notice ? `<div class="ticket-notice">📢 ${t.notice}</div>` : ''}
-      <div class="ticket-meta"><span>${t.date||''}</span><span>コメント ${(t.comments||[]).length}件</span></div>
+      <div class="ticket-meta">
+        <span>受付: ${t.received_date||'—'}</span>
+        <span>予定: ${t.scheduled_date||'—'}</span>
+        ${t.completed_date ? `<span style="color:#059669">完了: ${t.completed_date}</span>` : ''}
+        <span>コメント ${(t.comments||[]).length}件</span>
+      </div>
     </div>`).join('');
   renderStats();
 }
@@ -214,16 +225,22 @@ function openDetail(id) {
   document.getElementById('panel-body').innerHTML = `
     <dl class="dl">
       <dt class="dt">チケットID</dt><dd class="dd">${t.id}</dd>
-      <dt class="dt">発生日</dt><dd class="dd">${t.date}</dd>
       <dt class="dt">症状</dt><dd class="dd">${t.description||''}</dd>
     </dl>
     <label class="form-label">ステータス変更</label>
     <select class="status-select" onchange="changeStatus('${t.id}',this.value)">
       ${STATUSES.map(s=>`<option ${s===t.status?'selected':''}>${s}</option>`).join('')}
     </select>
+    <label class="form-label">受付日/発生日</label>
+    <input type="date" class="date-input" id="d-received" value="${t.received_date||''}">
+    <label class="form-label">作業予定日</label>
+    <input type="date" class="date-input" id="d-scheduled" value="${t.scheduled_date||''}">
+    <label class="form-label">完了日</label>
+    <input type="date" class="date-input" id="d-completed" value="${t.completed_date||''}">
+    <button class="save-btn" onclick="saveDates('${t.id}')">日付を保存</button>
     <label class="form-label">お知らせ・コメント</label>
     <textarea class="notice-ta" id="notice-text">${t.notice||''}</textarea>
-    <button class="save-btn" onclick="saveNotice('${t.id}')">保存</button>
+    <button class="save-btn" onclick="saveNotice('${t.id}')">お知らせを保存</button>
     <div class="panel-sep">作業コメント履歴</div>
     <div class="comment-list" id="comment-list-${t.id}">
       ${comments.map(c=>`<div class="comment">${c.text}<div class="comment-meta">${c.author} ・ ${c.time}</div></div>`).join('') || '<div style="font-size:13px;color:#ccc;padding:.2rem 0">コメントなし</div>'}
@@ -237,13 +254,29 @@ function openDetail(id) {
 }
 
 async function changeStatus(id, val) {
-  await sb.from('tickets').update({ status: val }).eq('id', id);
+  const updates = { status: val };
+  if (val === '完了') {
+    const t = tickets.find(x => x.id === id);
+    if (!t.completed_date) {
+      updates.completed_date = new Date().toISOString().slice(0, 10);
+    }
+  }
+  await sb.from('tickets').update(updates).eq('id', id);
+}
+
+async function saveDates(id) {
+  const received_date = document.getElementById('d-received').value || null;
+  const scheduled_date = document.getElementById('d-scheduled').value || null;
+  const completed_date = document.getElementById('d-completed').value || null;
+  const { error } = await sb.from('tickets').update({ received_date, scheduled_date, completed_date }).eq('id', id);
+  if (error) { alert('保存に失敗しました: ' + error.message); return; }
+  alert('日付を保存しました');
 }
 
 async function saveNotice(id) {
   const notice = document.getElementById('notice-text').value;
   await sb.from('tickets').update({ notice }).eq('id', id);
-  alert('保存しました');
+  alert('お知らせを保存しました');
 }
 
 async function addComment(id) {
@@ -258,7 +291,10 @@ async function addComment(id) {
 }
 
 function openModal() {
+  const today = new Date().toISOString().slice(0, 10);
   document.getElementById('f-store').innerHTML = STORES.map(s => `<option ${s===selectedStore?'selected':''}>${s}</option>`).join('');
+  document.getElementById('f-received').value = today;
+  document.getElementById('f-scheduled').value = '';
   document.getElementById('add-modal').classList.add('open');
   document.getElementById('overlay').classList.add('open');
 }
@@ -272,11 +308,16 @@ async function addTicket() {
   const mid = document.getElementById('f-mid').value.trim();
   const mid_type = document.getElementById('f-type').value;
   const description = document.getElementById('f-desc').value.trim();
+  const received_date = document.getElementById('f-received').value || null;
+  const scheduled_date = document.getElementById('f-scheduled').value || null;
   const notice = document.getElementById('f-notice').value.trim();
-  if (!mid || !description) { alert('機械IDと故障内容は必須です'); return; }
+  if (!description) { alert('機械番号と故障内容は必須です'); return; }
   const id = 'T' + Date.now();
-  const date = new Date().toISOString().slice(0, 10);
-  const { error } = await sb.from('tickets').insert([{ id, store, mid, mid_type, description, status:'受付中', date, notice, comments:[] }]);
+  const { error } = await sb.from('tickets').insert([{
+    id, store, mid, mid_type, description,
+    status: '受付中', received_date, scheduled_date,
+    completed_date: null, notice, comments: []
+  }]);
   if (error) { alert('登録に失敗しました: ' + error.message); return; }
   closeModal();
   ['f-mid','f-desc','f-notice'].forEach(i => document.getElementById(i).value = '');

@@ -173,6 +173,7 @@ body{font-family:'Hiragino Kaku Gothic ProN','Hiragino Sans','Meiryo',sans-serif
     <h2>🖨 印刷・作業履歴資料</h2>
     <div class="print-modal-btns">
       <button class="add-btn" onclick="window.print()">印刷 / PDF保存</button>
+      <button class="add-btn" onclick="downloadCSV()">📥 CSV出力（Excel用）</button>
       <button class="add-btn" onclick="closePrint()">閉じる</button>
     </div>
   </div>
@@ -459,6 +460,46 @@ function renderPrint() {
 }
 
 loadTickets();
+
+function downloadCSV() {
+  const store = document.getElementById('p-store').value;
+  const status = document.getElementById('p-status').value;
+  const from = document.getElementById('p-from').value;
+  const to = document.getElementById('p-to').value;
+  let filtered = tickets.filter(t => {
+    const mS = !store || t.store === store;
+    const mSt = !status || t.status === status;
+    const mF = !from || (t.received_date && t.received_date >= from);
+    const mT = !to || (t.received_date && t.received_date <= to);
+    return mS && mSt && mF && mT;
+  });
+  const headers = ['店舗','機械番号','種別','故障・症状','ステータス','受付/発生日','作業予定日','完了日','お知らせ','作業コメント履歴'];
+  const rows = filtered.map(t => {
+    const comments = (t.comments||[]).map(c => c.text + '(' + c.author + ' ' + c.time + ')').join(' / ');
+    return [
+      t.store||'',
+      t.mid||'未定',
+      t.mid_type||'',
+      t.description||'',
+      t.status||'',
+      t.received_date||'',
+      t.scheduled_date||'',
+      t.completed_date||'',
+      t.notice||'',
+      comments
+    ].map(v => '"' + String(v).replace(/"/g, '""') + '"');
+  });
+  const bom = '\uFEFF';
+  const csv = bom + [headers.map(h => '"' + h + '"'), ...rows].map(r => r.join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const now = new Date();
+  const fname = '修理履歴_' + now.getFullYear() + String(now.getMonth()+1).padStart(2,'0') + String(now.getDate()).padStart(2,'0') + '.csv';
+  a.href = url; a.download = fname; a.click();
+  URL.revokeObjectURL(url);
+}
+
 </script>
 </body>
 </html>

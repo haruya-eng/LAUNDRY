@@ -117,9 +117,8 @@ body{font-family:'Hiragino Kaku Gothic ProN','Hiragino Sans','Meiryo',sans-serif
       <button class="add-btn" onclick="openModal()">+ 新規登録</button>
     </div>
   </div>
-  <div class="stats">
-    <div class="stat"><div class="stat-label">受付中</div><div class="stat-num" id="cnt-new" style="color:#D97706">0</div></div>
-    <div class="stat"><div class="stat-label">対応中</div><div class="stat-num" id="cnt-prog" style="color:#2563EB">0</div></div>
+  <div class="stats" style="grid-template-columns:repeat(3,1fr)">
+    <div class="stat"><div class="stat-label">対応中（受付＋対応）</div><div class="stat-num" id="cnt-prog" style="color:#2563EB">0</div></div>
     <div class="stat"><div class="stat-label">部品待ち</div><div class="stat-num" id="cnt-wait" style="color:#9D174D">0</div></div>
     <div class="stat"><div class="stat-label">完了</div><div class="stat-num" id="cnt-done" style="color:#059669">0</div></div>
   </div>
@@ -128,7 +127,6 @@ body{font-family:'Hiragino Kaku Gothic ProN','Hiragino Sans','Meiryo',sans-serif
     <input type="text" id="search-text" placeholder="機械番号・症状・店舗名で検索..." oninput="renderList()">
     <select id="search-status" onchange="renderList()">
       <option value="">すべてのステータス</option>
-      <option value="受付中">受付中</option>
       <option value="対応中">対応中</option>
       <option value="部品待ち">部品待ち</option>
       <option value="完了">完了</option>
@@ -183,7 +181,6 @@ body{font-family:'Hiragino Kaku Gothic ProN','Hiragino Sans','Meiryo',sans-serif
     </select>
     <select id="p-status" onchange="renderPrint()">
       <option value="">すべてのステータス</option>
-      <option value="受付中">受付中</option>
       <option value="対応中">対応中</option>
       <option value="部品待ち">部品待ち</option>
       <option value="完了">完了</option>
@@ -205,8 +202,8 @@ const STORES = [
   '高城店','城野店','下郡店','西大分店',
   '大在北店','市浜店','法鏡寺店','城井店'
 ];
-const STATUSES = ['受付中','対応中','部品待ち','完了'];
-const BADGE_CLS = {受付中:'b-new',対応中:'b-progress',部品待ち:'b-waiting',完了:'b-done'};
+const STATUSES = ['対応中','部品待ち','完了'];
+const BADGE_CLS = {対応中:'b-progress',受付中:'b-progress',部品待ち:'b-waiting',完了:'b-done'};
 
 let tickets = [];
 let selectedStore = '';
@@ -236,8 +233,7 @@ function setStore(s) { selectedStore = s; renderStoreTabs(); renderList(); }
 
 function renderStats() {
   const src = selectedStore ? tickets.filter(t => t.store === selectedStore) : tickets;
-  document.getElementById('cnt-new').textContent = src.filter(t => t.status==='受付中').length;
-  document.getElementById('cnt-prog').textContent = src.filter(t => t.status==='対応中').length;
+  document.getElementById('cnt-prog').textContent = src.filter(t => t.status==='対応中' || t.status==='受付中').length;
   document.getElementById('cnt-wait').textContent = src.filter(t => t.status==='部品待ち').length;
   document.getElementById('cnt-done').textContent = src.filter(t => t.status==='完了').length;
 }
@@ -372,7 +368,7 @@ async function addTicket() {
   const id = 'T' + Date.now();
   const { error } = await sb.from('tickets').insert([{
     id, store, mid, mid_type, description,
-    status: '受付中', received_date, scheduled_date,
+    status: '対応中', received_date, scheduled_date,
     completed_date: null, notice, comments: []
   }]);
   if (error) { alert('登録に失敗しました: ' + error.message); return; }

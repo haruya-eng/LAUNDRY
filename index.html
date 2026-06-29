@@ -54,6 +54,8 @@ body{font-family:'Hiragino Kaku Gothic ProN','Hiragino Sans','Meiryo',sans-serif
 .notice-ta{min-height:56px;resize:vertical;font-family:inherit}
 .save-btn{padding:5px 14px;font-size:12px;border:1px solid #ddd;border-radius:6px;background:#fff;cursor:pointer;margin-bottom:.85rem;display:block}
 .save-btn:hover{background:#f5f4f0}
+.delete-btn{padding:6px 14px;font-size:12px;border:1px solid #fca5a5;border-radius:6px;background:#fff5f5;color:#dc2626;cursor:pointer;width:100%}
+.delete-btn:hover{background:#fee2e2}
 .panel-sep{font-size:12px;font-weight:500;color:#aaa;padding:6px 0 5px;margin-top:.5rem;border-top:1px solid #f0ede8}
 .comment-list{margin-bottom:.75rem}
 .comment{background:#f9f8f5;border-radius:8px;padding:.55rem .75rem;margin-bottom:5px;font-size:13px}
@@ -302,6 +304,9 @@ function openDetail(id) {
     <div class="comment-form">
       <input type="text" id="comment-input" placeholder="作業内容・メモを追加...">
       <button onclick="addComment('${t.id}')">送信</button>
+    </div>
+    <div style="margin-top:1.5rem;padding-top:1rem;border-top:1px solid #f0ede8">
+      <button class="delete-btn" onclick="deleteTicket('${t.id}')">🗑 このチケットを削除</button>
     </div>`;
   document.getElementById('detail-panel').classList.add('open');
   document.getElementById('overlay').classList.add('open');
@@ -374,6 +379,15 @@ async function addTicket() {
   if (error) { alert('登録に失敗しました: ' + error.message); return; }
   closeModal();
   ['f-mid','f-desc','f-notice'].forEach(i => document.getElementById(i).value = '');
+}
+
+async function deleteTicket(id) {
+  const t = tickets.find(x => x.id === id);
+  if (!t) return;
+  if (!confirm(`「${t.store} ／ ${t.mid||'番号未定'}」のチケットを削除しますか？\nこの操作は取り消せません。`)) return;
+  const { error } = await sb.from('tickets').delete().eq('id', id);
+  if (error) { alert('削除に失敗しました: ' + error.message); return; }
+  closeAll();
 }
 
 function closeAll() {

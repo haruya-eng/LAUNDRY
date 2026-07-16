@@ -294,7 +294,7 @@ function openDetail(id) {
     <label class="form-label">完了日</label>
     <input type="date" class="date-input" id="d-completed" value="${t.completed_date||''}">
     <button class="save-btn" onclick="saveDates('${t.id}')">保存</button>
-    <label class="form-label">お知らせ・コメント</label>
+    <label class="form-label">状況・修理内容</label>
     <textarea class="notice-ta" id="notice-text">${t.notice||''}</textarea>
     <button class="save-btn" onclick="saveNotice('${t.id}')">お知らせを保存</button>
     <div class="panel-sep">作業コメント履歴</div>

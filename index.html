@@ -362,6 +362,28 @@
   .imp-note{ font-size:12.5px; color:var(--ink-soft); line-height:1.6; margin:4px 0; }
   .imp-warn{ color:var(--warn); }
 
+  /* ---------- Store-level events ---------- */
+  .tile-event{ font-size:11.5px; font-weight:700; color:var(--warn); background:var(--warn-bg); border-radius:6px; padding:3px 7px; align-self:flex-start; }
+  .tile.has-event{ box-shadow:inset 0 -3px 0 var(--warn); }
+  .chip[data-status="events"].active{ background:var(--warn); }
+  .live-count{ font-size:11.5px; font-weight:700; color:var(--warn); background:var(--warn-bg); border-radius:999px; padding:2px 9px; margin-left:8px; }
+  .live-row{
+    display:flex; align-items:center; gap:10px; width:100%; text-align:left; border:none; background:transparent;
+    padding:9px 4px; border-top:1px solid var(--line); cursor:pointer; color:var(--ink); font-size:13px; flex-wrap:wrap;
+  }
+  .live-row:hover{ background:var(--panel-2); }
+  .live-store{ font-weight:800; min-width:88px; }
+  .live-desc{ flex:1; min-width:140px; color:var(--ink-soft); }
+  .live-date{ font-size:11.5px; color:var(--ink-faint); }
+  .events-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px; flex-wrap:wrap; }
+  .event-item{ border:1px solid var(--line); border-left:4px solid var(--warn); border-radius:8px; padding:10px 12px; margin-bottom:8px; background:var(--panel); }
+  .event-item.resolved{ border-left-color:var(--ok); opacity:.85; }
+  .ev-actions{ display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; }
+  .qr-print-title{ position:relative; }
+  .qr-store-qr{ position:absolute; right:0; top:50%; transform:translateY(-50%); display:flex; flex-direction:column; align-items:center; gap:2px; }
+  .qr-store-qr .qr-grid-box canvas, .qr-store-qr .qr-grid-box img{ width:46px !important; height:46px !important; }
+  .qr-store-cap{ font-size:9px; font-weight:700; line-height:1.1; }
+
   /* ---------- QR reference sheet: 4x5 grid, 20 per page (modal + print) ---------- */
   .qr-list-modal{ max-width:520px; width:100%; max-height:86vh; display:flex; flex-direction:column; }
   .qr-grid-scroll{ overflow-y:auto; max-height:58vh; margin:10px 0; }
@@ -398,6 +420,10 @@
     #printSheet .qr-grid-box canvas, #printSheet .qr-grid-box img, #printSheet .qr-grid-box table{
       width:auto !important; height:auto !important; max-width:42mm; max-height:42mm;
     }
+    #printSheet .qr-store-qr .qr-grid-box canvas, #printSheet .qr-store-qr .qr-grid-box img, #printSheet .qr-store-qr .qr-grid-box table{
+      width:20mm !important; height:20mm !important; max-width:20mm; max-height:20mm;
+    }
+    #printSheet .qr-store-cap{ font-size:10px; color:#000; }
   }
 </style>
 </head>
@@ -487,6 +513,9 @@
   var quickReport = null; // {storeId, machineId} when opened via QR deep link
   var quickReportDone = null; // null | "error" | "resolved"
   var quickShowExtraForm = false;
+  var quickStore = null;        // {storeId} when opened from a store-level QR
+  var addingEvent = false;
+  var editingEventId = null;
   var errorCodesMap = new Map();
   var addingErrorCode = false;
   var editingErrorCode = null;
@@ -611,8 +640,8 @@
     ["かいさき店", "9", "乾燥機", "IPSO DR-35", "", "16kg", "2017-09-29", ""],
     ["かいさき店", "10", "水洗機", "IPSO IWF-165", "", "18kg", "2017-09-29", ""],
     ["かいさき店", "11", "洗濯乾燥機", "山本 WD172CS", "", "洗濯17kg/乾燥10kg", "2017-09-29", ""],
-    ["かいさき店", "12", "洗濯乾燥機", "山本 WD272CSMCD6DC/", "", "洗濯27kg/乾燥16kg", "2017-09-29", ""],
-    ["かいさき店", "13", "スニーカーランドリー", "アクア MCW-W6C", "", "", "2017-09-29", ""],
+    ["かいさき店", "12", "洗濯乾燥機", "山本 WD272CS", "", "洗濯27kg/乾燥16kg", "2017-09-29", ""],
+    ["かいさき店", "13", "スニーカーランドリー", "アクア MCD6DC/MCW-W6C", "", "", "2017-09-29", ""],
     ["古国府店", "1", "スニーカーランドリー", "アクア", "", "", "2018-06-03", ""],
     ["古国府店", "2", "洗濯乾燥機", "山本 WD271CY", "", "洗濯27kg/乾燥18kg", "2018-06-03", ""],
     ["古国府店", "3", "洗濯乾燥機", "山本 WD271CY", "", "洗濯27kg/乾燥18kg", "2018-06-03", ""],
@@ -642,8 +671,8 @@
     ["高城店", "12", "洗濯乾燥機", "山本 YD272SS", "", "洗濯27kg/乾燥20kg", "2020-03-10", ""],
     ["高城店", "13", "洗濯乾燥機", "山本 YD272SS", "", "洗濯27kg/乾燥20kg", "2020-03-10", ""],
     ["高城店", "14", "洗濯乾燥機", "山本 YD172SS", "", "洗濯17kg/乾燥12kg", "2020-03-10", ""],
-    ["高城店", "15", "水洗機", "スピードクイーン SHWMCD-D6C/", "", "10kg", "2020-03-10", ""],
-    ["高城店", "16", "スニーカーランドリー", "アクア MCW-W6C", "", "", "2020-03-10", ""],
+    ["高城店", "15", "水洗機", "スピードクイーン SHW", "", "10kg", "2020-03-10", ""],
+    ["高城店", "16", "スニーカーランドリー", "アクア MCD-D6C/MCW-W6C", "", "", "2020-03-10", ""],
     ["コスモウォッシュ佐伯店", "1", "二段式乾燥機", "スピードクイーン ST-15", "", "15kg", "2020-07-22", ""],
     ["コスモウォッシュ佐伯店", "2", "二段式乾燥機", "スピードクイーン ST-15", "", "15kg", "2020-07-22", ""],
     ["コスモウォッシュ佐伯店", "3", "二段式乾燥機", "スピードクイーン ST-15", "", "15kg", "2020-07-22", ""],
@@ -655,8 +684,8 @@
     ["コスモウォッシュ佐伯店", "9", "洗濯乾燥機", "山本 YD272SS", "", "洗濯24kg/乾燥20kg", "2020-07-22", ""],
     ["コスモウォッシュ佐伯店", "10", "洗濯乾燥機", "山本 YD272SS", "", "洗濯24kg/乾燥20kg", "2020-07-22", ""],
     ["コスモウォッシュ佐伯店", "11", "洗濯乾燥機", "山本 YD172SS", "", "洗濯17kg/乾燥12kg", "2020-07-22", ""],
-    ["コスモウォッシュ佐伯店", "12", "水洗機", "SCE-20MCD6DC/", "", "9kg", "2020-07-22", ""],
-    ["コスモウォッシュ佐伯店", "13", "スニーカーランドリー", "アクア MCW-W6C", "", "", "2020-07-22", ""],
+    ["コスモウォッシュ佐伯店", "12", "水洗機", "SCE-20", "", "9kg", "2020-07-22", ""],
+    ["コスモウォッシュ佐伯店", "13", "スニーカーランドリー", "アクア MCD6DC/MCW-W6C", "", "", "2020-07-22", ""],
     ["ソレイユS店", "1", "二段式乾燥機", "スピードクイーン ST-15", "", "15kg", "2020-11-28", ""],
     ["ソレイユS店", "2", "二段式乾燥機", "スピードクイーン ST-15", "", "15kg", "2020-11-28", ""],
     ["ソレイユS店", "3", "二段式乾燥機", "スピードクイーン ST-15", "", "15kg", "2020-11-28", ""],
@@ -668,8 +697,8 @@
     ["ソレイユS店", "9", "洗濯乾燥機", "山本 YD272SS", "", "洗濯24kg/乾燥20kg", "2020-11-28", ""],
     ["ソレイユS店", "10", "洗濯乾燥機", "山本 YD272SS", "", "洗濯24kg/乾燥20kg", "2020-11-28", ""],
     ["ソレイユS店", "11", "洗濯乾燥機", "山本 YD172SS", "", "洗濯17kg/乾燥12kg", "2020-11-28", ""],
-    ["ソレイユS店", "12", "水洗機", "SCE-20MCD6DC/", "", "9kg", "2020-11-28", ""],
-    ["ソレイユS店", "13", "スニーカーランドリー", "アクア MCW-W6C", "", "", "2020-11-28", ""],
+    ["ソレイユS店", "12", "水洗機", "SCE-20", "", "9kg", "2020-11-28", ""],
+    ["ソレイユS店", "13", "スニーカーランドリー", "アクア MCD6DC/MCW-W6C", "", "", "2020-11-28", ""],
     ["じょうの店", "1", "洗濯乾燥機", "TOSEI SF124C", "", "洗濯12kg/乾燥8kg", "2021-03-19", ""],
     ["じょうの店", "2", "洗濯乾燥機", "TOSEI SF224C", "", "洗濯22kg/乾燥15kg", "2021-03-19", ""],
     ["じょうの店", "3", "洗濯乾燥機", "TOSEI SF224C", "", "洗濯22kg/乾燥15kg", "2021-03-19", ""],
@@ -733,6 +762,18 @@
   ];
   /* INITIAL_DATA_END */
 
+  /* 機械設置一覧表の読み取りミスの訂正（[店舗名, 機械番号, 誤った型番, 正しい型番]）。登録済みデータに誤りがある場合のみ画面にボタンが出ます */
+  var MODEL_CORRECTIONS = [
+    ["かいさき店", "12", "山本 WD272CSMCD6DC/", "山本 WD272CS"],
+    ["かいさき店", "13", "アクア MCW-W6C", "アクア MCD6DC/MCW-W6C"],
+    ["高城店", "15", "スピードクイーン SHWMCD-D6C/", "スピードクイーン SHW"],
+    ["高城店", "16", "アクア MCW-W6C", "アクア MCD-D6C/MCW-W6C"],
+    ["コスモウォッシュ佐伯店", "12", "SCE-20MCD6DC/", "SCE-20"],
+    ["コスモウォッシュ佐伯店", "13", "アクア MCW-W6C", "アクア MCD6DC/MCW-W6C"],
+    ["ソレイユS店", "12", "SCE-20MCD6DC/", "SCE-20"],
+    ["ソレイユS店", "13", "アクア MCW-W6C", "アクア MCD6DC/MCW-W6C"]
+  ];
+
   var STARTER_ERROR_CODES = {
     "01": "ドア開閉エラー",
     "02": "給水エラー（水量不足）",
@@ -755,6 +796,7 @@
     if(name === "stores"){
       if("name" in obj) o.name = obj.name;
       if("order" in obj) o.order_num = obj.order;
+      if("events" in obj) o.events = obj.events;
     } else if(name === "machines"){
       if("storeId" in obj) o.store_id = obj.storeId;
       if("type" in obj) o.type = obj.type;
@@ -781,7 +823,7 @@
   function fromDbRow(name, row){
     if(!row) return row;
     if(name === "stores"){
-      return { name: row.name, order: row.order_num };
+      return { name: row.name, order: row.order_num, events: Array.isArray(row.events) ? row.events : [] };
     }
     if(name === "machines"){
       return {
@@ -799,12 +841,13 @@
   }
 
   var refetchers = {}; // table -> function() that re-fetches and re-renders that collection
+  var refetchSuspended = false; // true while a bulk import is writing (one refetch at the end instead)
 
   function makeSupabaseDbShim(client){
     function collection(name){
       var table = tableNameFor(name);
       var idCol = idColumnFor(name);
-      function poke(){ if(refetchers[table]) refetchers[table](); }
+      function poke(){ if(!refetchSuspended && refetchers[table]) refetchers[table](); }
       return {
         doc: function(id){
           return {
@@ -864,7 +907,7 @@
           refetchers[table] = fetchAll;
           fetchAll();
           client.channel("realtime:"+table)
-            .on("postgres_changes", { event:"*", schema:"public", table:table }, fetchAll)
+            .on("postgres_changes", { event:"*", schema:"public", table:table }, function(){ if(!refetchSuspended) fetchAll(); })
             .subscribe();
         }
       };
@@ -889,7 +932,10 @@
       var params = new URLSearchParams(location.search);
       var qStore = params.get("store");
       var qMachine = params.get("machine");
-      if(qMachine){
+      if(params.get("report") === "store" && qStore){
+        quickStore = { storeId: qStore };
+        view = "storereport";
+      } else if(qMachine){
         quickReport = { storeId: qStore, machineId: qMachine };
         view = "quickreport";
       } else if(qStore){
@@ -1005,8 +1051,10 @@
 
   function severityRank(storeId){
     var agg = storeAggregateStatus(storeId);
-    if(agg === null) return 99; // unregistered sinks to the bottom
-    return STATUS_ORDER.indexOf(agg); // broken=0 ... normal=3
+    var hasEv = openEventsOf(storesMap.get(storeId)).length > 0;
+    if(agg === null) return hasEv ? 1.5 : 99; // unregistered sinks to the bottom
+    if(agg === "normal" && hasEv) return 0.5;
+    return STATUS_ORDER.indexOf(agg);          // stopped=0, normal=1
   }
 
   function storesSortedForGrid(){
@@ -1136,14 +1184,14 @@
   /* ---------------- render ---------------- */
 
   function render(){
-    var isQuick = (view === "quickreport");
+    var isQuick = (view === "quickreport" || view === "storereport");
     document.querySelector(".headerbar").style.display = isQuick ? "none" : "flex";
     document.getElementById("dbWarning").style.display = isQuick ? "none" : "block";
     document.querySelector(".toolbar").style.display = isQuick ? "none" : "flex";
     document.getElementById("legendRow").style.display = isQuick ? "none" : "flex";
 
     if(isQuick){
-      renderQuickReport();
+      if(view === "storereport") renderStoreReport(); else renderQuickReport();
       return;
     }
     renderSummary();
@@ -1163,7 +1211,8 @@
   function renderLegend(){
     var html = STATUS_KEYS.map(function(k){
       return '<span><span class="d" style="background:'+STATUSES[k].color+'"></span>'+STATUSES[k].label+'</span>';
-    }).join("") + '<span><span class="d" style="background:var(--line)"></span>未登録（機械なし）</span>';
+    }).join("") + '<span><span class="d" style="background:var(--warn)"></span>店舗の出来事（対応中）</span>'+
+      '<span><span class="d" style="background:var(--line)"></span>未登録（機械なし）</span>';
     document.getElementById("legendRow").innerHTML = html;
   }
 
@@ -1191,6 +1240,12 @@
         '</button>'
       );
     });
+    chips.push(
+      '<button class="chip'+(statusFilter === "events" ? " active" : "")+'" data-status="events" data-action="filter-status">'+
+        '<span class="dot" style="background:var(--warn)"></span>'+
+        '<span class="n">'+openEventTotal()+'</span>店舗の出来事'+
+      '</button>'
+    );
     document.getElementById("summaryChips").innerHTML = chips.join("");
   }
 
@@ -1206,7 +1261,8 @@
       machines.forEach(function(m){ counts[normalizeStatus(m.status)]++; });
 
       var matchesSearch = !q || s.name.toLowerCase().indexOf(q) !== -1 || s.id.indexOf(q) !== -1 || ("店舗"+pad2(s.order)).indexOf(q) !== -1;
-      var matchesFilter = !statusFilter || (agg === statusFilter);
+      var evs = openEventsOf(s);
+      var matchesFilter = !statusFilter || (statusFilter === "events" ? evs.length > 0 : agg === statusFilter);
       var dim = !(matchesSearch && matchesFilter);
 
       var metaParts = [];
@@ -1216,10 +1272,11 @@
         metaParts.push("未登録");
       }
 
-      return '<button class="tile '+cssClass+(dim?" dim":"")+'" data-action="open-store" data-id="'+s.id+'">'+
+      return '<button class="tile '+cssClass+(dim?" dim":"")+(evs.length?" has-event":"")+'" data-action="open-store" data-id="'+s.id+'">'+
         '<div class="top"><span class="no">No.'+pad2(s.order)+'</span><span class="porthole '+portholeClass+'"></span></div>'+
         '<div class="name">'+escapeHtml(s.name)+'</div>'+
         '<div class="meta">'+(machines.length? machines.length+"台・":"") + metaParts.join(" ")+'</div>'+
+        (evs.length ? '<div class="tile-event">'+escapeHtml(evs[0].category || "出来事")+(evs.length > 1 ? " ほか"+(evs.length-1)+"件" : "")+'</div>' : '')+
       '</button>';
     }).join("");
 
@@ -1250,6 +1307,7 @@
         '<div class="dz-text"><b>全店舗の一覧表をここにドロップして、店舗と機械をまとめて登録</b>'+
           '<span>1行目に「店舗名／機械番号／種別／メーカー・型番／シリアル番号／容量／設置日／メモ」の見出しがあるExcel・CSVに対応。店舗名で自動的に振り分けます（店舗名だけの行は、店舗の登録のみ行います）</span></div>'+
         '<div class="dz-actions">'+
+          (pendingModelCorrections().length ? '<button class="btn small" data-action="apply-corrections">資料の読み取りミスを訂正（'+pendingModelCorrections().length+'件）</button>' : '')+
           '<button class="btn small primary" data-action="load-initial-data">初期データ（'+initialStoreCount()+'店舗・'+INITIAL_DATA.length+'台）を登録</button>'+
           '<button class="btn small" data-action="choose-bulk-file">ファイルを選ぶ</button>'+
           '<button class="btn small ghost" data-action="download-bulk-template">'+iconExcel()+' ひな形をダウンロード</button>'+
@@ -1258,7 +1316,7 @@
 
     var gridHtml = stores.length ? ('<div class="grid">'+html+'</div>') : '<div class="empty-note">店舗が登録されていません。「＋ 店舗を追加」から登録してください。</div>';
 
-    document.getElementById("mainArea").innerHTML = toolbarRow + bulkZone + addStoreForm + gridHtml;
+    document.getElementById("mainArea").innerHTML = renderLiveEventsPanel() + toolbarRow + bulkZone + addStoreForm + gridHtml;
     var storeNameInput = document.querySelector('#mainArea .panel input[data-field="name"]');
     if(storeNameInput) storeNameInput.focus();
   }
@@ -1281,7 +1339,7 @@
         '<span class="store-tag">No.'+pad2(store.order)+'</span>'+
         '<button class="btn primary" data-action="toggle-add-machine">＋ 機械を追加</button>'+
         (machines.length? '<button class="btn" data-action="print-qr-sheet" data-id="'+store.id+'">'+iconQr()+' QR一覧表を見る</button>' : '')+
-        (machines.length? '<button class="btn" data-action="export-store-excel" data-id="'+store.id+'">'+iconExcel()+' Excelで出力</button>' : '')+
+        ((machines.length || storeEvents(store).length)? '<button class="btn" data-action="export-store-excel" data-id="'+store.id+'">'+iconExcel()+' Excelで出力</button>' : '')+
         '<button class="btn danger" data-action="delete-store" data-id="'+store.id+'" title="この店舗を削除">'+iconTrash()+' 店舗を削除</button>'+
       '</div>';
 
@@ -1307,7 +1365,7 @@
       listHtml = '<div class="machine-list">' + machines.map(renderMachineCard).join("") + '</div>';
     }
 
-    document.getElementById("mainArea").innerHTML = head + dropZone + addForm + listHtml;
+    document.getElementById("mainArea").innerHTML = head + renderEventsPanel(store) + dropZone + addForm + listHtml;
     var nameInput = document.getElementById("storeNameInput");
     if(nameInput) nameInput.addEventListener("blur", onStoreNameBlur);
     if(nameInput) nameInput.addEventListener("keydown", function(e){ if(e.key==="Enter") nameInput.blur(); });
@@ -1542,17 +1600,20 @@
     return pages.map(function(pageMachines, pageIdx){
       var cells = pageMachines.map(function(m, idx){ return qrGridCellHtml(m, idPrefix+"_"+pageIdx+"_"+idx); }).join("");
       return '<div class="qr-print-page">'+
-        '<div class="qr-print-title">'+escapeHtml(store ? store.name : "")+'</div>'+
+        '<div class="qr-print-title">'+escapeHtml(store ? store.name : "")+
+          (store ? '<div class="qr-store-qr"><div class="qr-grid-box" id="'+idPrefix+'_store_'+pageIdx+'"></div><div class="qr-store-cap">店舗の出来事</div></div>' : '')+
+        '</div>'+
         '<div class="qr-grid">'+cells+'</div>'+
       '</div>';
     }).join("");
   }
 
-  function renderQrGridInto(machines, idPrefix, qrSize){
+  function renderQrGridInto(machines, idPrefix, qrSize, store){
     chunkArray(machines, GRID_PAGE_SIZE).forEach(function(pageMachines, pageIdx){
       pageMachines.forEach(function(m, idx){
         renderQrInto(idPrefix+"_"+pageIdx+"_"+idx, buildMachineUrl(m.storeId, m.id), qrSize);
       });
+      if(store) renderQrInto(idPrefix+"_store_"+pageIdx, buildStoreReportUrl(store.id), Math.round(qrSize * 0.8));
     });
   }
 
@@ -1565,7 +1626,7 @@
     wrap.innerHTML =
       '<div class="modal qr-list-modal">'+
         '<h3 style="margin:0 0 4px;font-size:15px;">QR一覧表：'+escapeHtml(store.name)+'</h3>'+
-        '<p style="margin:0;font-size:12.5px;color:var(--ink-soft);">印刷・ラミネートして、バックヤードなど明るく手の届く場所に置いてください。エラー発生時はこの一覧から該当の機械番号を探して読み取ります。</p>'+
+        '<p style="margin:0;font-size:12.5px;color:var(--ink-soft);">印刷・ラミネートして、バックヤードなど明るく手の届く場所に置いてください。エラー発生時はこの一覧から該当の機械番号を探して読み取ります。右上の小さなQRは、水漏れ・停電など「機械以外」の出来事を報告するための店舗用QRです。</p>'+
         '<div class="qr-grid-scroll">'+qrGridPagesHtml(store, machines, "listQr")+'</div>'+
         '<div class="actions">'+
           '<button class="btn ghost" id="qrListCloseBtn">閉じる</button>'+
@@ -1579,14 +1640,14 @@
       buildPrintGridSheet(store, machines);
       setTimeout(function(){ window.print(); }, 80);
     });
-    renderQrGridInto(machines, "listQr", 64);
+    renderQrGridInto(machines, "listQr", 64, store);
     function close(){ wrap.remove(); }
   }
 
   function buildPrintGridSheet(store, machines){
     var sheet = document.getElementById("printSheet");
     sheet.innerHTML = qrGridPagesHtml(store, machines, "printQr");
-    renderQrGridInto(machines, "printQr", 300);
+    renderQrGridInto(machines, "printQr", 300, store);
   }
 
   function iconPencil(){ return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>'; }
@@ -1594,6 +1655,174 @@
   function iconChevron(){ return '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 18l6-6-6-6"/></svg>'; }
   function iconExcel(){ return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/></svg>'; }
   function iconQr(){ return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3h-3z"/><path d="M20 14v3h-3"/><path d="M14 20h3"/><path d="M20 20v-3"/></svg>'; }
+
+  /* ---------------- store-level events (水漏れ・停電 など、機械以外の出来事) ---------------- */
+  var EVENT_CATS = ["水漏れ","停電","空調・照明の不具合","防犯・いたずら","清掃・ごみ","お客様対応","その他"];
+
+  function storeEvents(store){ return (store && Array.isArray(store.events)) ? store.events : []; }
+  function openEventsOf(store){ return storeEvents(store).filter(function(e){ return e.status !== "resolved"; }); }
+  function eventSortKey(e){ return String(e.occurredAt || "") ; }
+  function allOpenEvents(){
+    var out = [];
+    storesMap.forEach(function(s){
+      openEventsOf(s).forEach(function(e){ out.push({ store:s, ev:e }); });
+    });
+    out.sort(function(a,b){
+      var c = eventSortKey(b.ev).localeCompare(eventSortKey(a.ev));
+      return c !== 0 ? c : ((b.ev.createdAt||0) - (a.ev.createdAt||0));
+    });
+    return out;
+  }
+  function openEventTotal(){
+    var n = 0;
+    storesMap.forEach(function(s){ n += openEventsOf(s).length; });
+    return n;
+  }
+
+  function eventErrHint(err){
+    var t = errText(err);
+    return (/events/i.test(t) && /(column|schema cache)/i.test(t))
+      ? "\n\n※Supabaseの stores テーブルに「events」列がありません。ご案内のSQLを実行してください。" : "";
+  }
+
+  // read the latest events from the DB, apply the change, write them back
+  async function updateStoreEvents(storeId, mutate){
+    var snap = await withRetry(function(){ return db.collection("stores").doc(storeId).get(); });
+    var data = (snap.exists && snap.data()) ? snap.data() : {};
+    var cur = Array.isArray(data.events) ? data.events.slice() : [];
+    var next = mutate(cur);
+    await withRetry(function(){ return db.collection("stores").doc(storeId).update({ events: next }); });
+  }
+
+  function buildStoreReportUrl(storeId){
+    return location.origin + location.pathname + "?report=store&store=" + encodeURIComponent(storeId);
+  }
+
+  function renderEventForm(ev, storeId){
+    var isEdit = !!ev; ev = ev || {};
+    return '<div class="panel" style="background:var(--panel-2);">'+
+      '<h3>'+(isEdit ? "出来事を編集" : "出来事を追加")+'</h3>'+
+      '<div class="form-grid">'+
+        '<div class="field"><label>区分</label><input type="text" list="eventCats" data-field="category" value="'+escapeHtml(ev.category || "")+'" placeholder="例：水漏れ">'+
+          '<datalist id="eventCats">'+EVENT_CATS.map(function(c){ return '<option value="'+c+'">'; }).join("")+'</datalist></div>'+
+        field("発生日時","occurredAt","datetime-local", null, ev.occurredAt || nowLocalDatetime())+
+        field("状態","status","select", [{v:"open",l:"対応中"},{v:"resolved",l:"解決済み"}], ev.status === "resolved" ? "resolved" : "open")+
+        field("報告者","reporter","text", null, ev.reporter || "")+
+        field("解決日時","resolvedAt","datetime-local", null, ev.resolvedAt || "")+
+      '</div>'+
+      '<div class="field" style="margin-bottom:10px;"><label>内容</label><textarea data-field="description" placeholder="例：トイレ前の床に水が広がっている">'+escapeHtml(ev.description || "")+'</textarea></div>'+
+      '<div class="field" style="margin-bottom:14px;"><label>対応内容</label><textarea data-field="responseNotes" placeholder="例：業者に連絡、止水栓を閉めた">'+escapeHtml(ev.responseNotes || "")+'</textarea></div>'+
+      '<div class="form-actions">'+
+        '<button class="btn ghost" data-action="cancel-event-form">キャンセル</button>'+
+        '<button class="btn primary" data-action="save-event" data-event-id="'+escapeHtml(ev.id || "")+'">'+(isEdit ? "保存" : "追加する")+'</button>'+
+      '</div>'+
+    '</div>';
+  }
+
+  function renderEventsPanel(store){
+    var evs = storeEvents(store).slice().sort(function(a,b){
+      var ao = a.status === "resolved" ? 1 : 0, bo = b.status === "resolved" ? 1 : 0;
+      if(ao !== bo) return ao - bo;
+      var c = eventSortKey(b).localeCompare(eventSortKey(a));
+      return c !== 0 ? c : ((b.createdAt||0) - (a.createdAt||0));
+    });
+    var openCnt = openEventsOf(store).length;
+    var html = '<div class="panel events-panel">'+
+      '<div class="events-head"><h3 style="margin:0;">店舗の出来事'+(openCnt ? '<span class="live-count">対応中 '+openCnt+'件</span>' : '')+'</h3>'+
+        '<button class="btn small" data-action="toggle-add-event">＋ 出来事を追加</button></div>';
+    if(addingEvent) html += renderEventForm(null, store.id);
+    if(!evs.length && !addingEvent){
+      html += '<div class="no-repairs">いま記録されている出来事はありません。水漏れ・停電・いたずらなど、機械以外のことを記録できます。</div>';
+    }
+    html += evs.map(function(ev){
+      if(editingEventId === ev.id) return renderEventForm(ev, store.id);
+      var resolved = ev.status === "resolved";
+      return '<div class="event-item'+(resolved ? " resolved" : "")+'">'+
+        '<div class="r-top"><span><span class="badge st-warn">'+escapeHtml(ev.category || "出来事")+'</span> '+
+          '<span class="badge '+(resolved ? "st-normal" : "st-progress")+'">'+(resolved ? "解決済み" : "対応中")+'</span></span>'+
+          '<span class="r-date mono">'+escapeHtml(fmtDateTime(ev.occurredAt))+'</span></div>'+
+        (ev.description ? '<div class="r-desc">'+escapeHtml(ev.description)+'</div>' : '')+
+        '<div class="r-foot">'+
+          (ev.reporter ? '<span>報告: '+escapeHtml(ev.reporter)+'</span>' : '')+
+          (ev.responseNotes ? '<span>対応: '+escapeHtml(ev.responseNotes)+'</span>' : '')+
+          (resolved && ev.resolvedAt ? '<span>解決: '+escapeHtml(fmtDateTime(ev.resolvedAt))+'</span>' : '')+
+          (ev.source === "qr" ? '<span>QRから報告</span>' : '')+
+        '</div>'+
+        '<div class="ev-actions">'+
+          (resolved
+            ? '<button class="btn small" data-action="reopen-event" data-event-id="'+escapeHtml(ev.id)+'">対応中に戻す</button>'
+            : '<button class="btn small primary" data-action="resolve-event" data-event-id="'+escapeHtml(ev.id)+'">解決済みにする</button>')+
+          '<button class="btn small ghost" data-action="edit-event" data-event-id="'+escapeHtml(ev.id)+'">編集</button>'+
+          '<button class="btn small ghost" data-action="delete-event" data-event-id="'+escapeHtml(ev.id)+'">削除</button>'+
+        '</div>'+
+      '</div>';
+    }).join("");
+    return html + '</div>';
+  }
+
+  function renderLiveEventsPanel(){
+    var live = allOpenEvents();
+    if(!live.length) return "";
+    var shown = live.slice(0, 8);
+    return '<div class="panel live-events">'+
+      '<h3>いま店舗で起きていること<span class="live-count">'+live.length+'件</span></h3>'+
+      shown.map(function(x){
+        return '<button class="live-row" data-action="open-store" data-id="'+escapeHtml(x.store.id)+'">'+
+          '<span class="live-store">'+escapeHtml(x.store.name)+'</span>'+
+          '<span class="badge st-warn">'+escapeHtml(x.ev.category || "出来事")+'</span>'+
+          '<span class="live-desc">'+escapeHtml(x.ev.description || "")+'</span>'+
+          '<span class="live-date mono">'+escapeHtml(fmtDateTime(x.ev.occurredAt))+'</span>'+
+        '</button>';
+      }).join("")+
+      (live.length > shown.length ? '<div class="no-repairs" style="padding:8px 4px 0;">ほか '+(live.length - shown.length)+'件は、各店舗の画面で確認できます。</div>' : '')+
+    '</div>';
+  }
+
+  function renderStoreReport(){
+    var qs = quickStore || {};
+    var store = storesMap.get(qs.storeId);
+    var openFullLink = '<div class="quick-link"><button class="btn ghost" data-action="open-full-app">管理画面全体を開く</button></div>';
+    var html = '<div class="quick-wrap">'+
+      '<div class="quick-header"><div class="dial" aria-hidden="true" style="width:32px;height:32px;"></div><h1 style="font-size:17px;">店舗の状況を報告</h1></div>';
+
+    if(!dbEverLoaded()){
+      html += '<div class="quick-card"><p style="color:var(--ink-soft);font-size:13.5px;">読み込み中です…</p></div>';
+      document.getElementById("mainArea").innerHTML = html + openFullLink + '</div>';
+      return;
+    }
+    if(!store){
+      html += '<div class="quick-card"><p style="font-size:13.5px;color:var(--ink-soft);">この店舗の情報が見つかりませんでした。QRコードが古いか、店舗が削除された可能性があります。</p></div>';
+      document.getElementById("mainArea").innerHTML = html + openFullLink + '</div>';
+      return;
+    }
+
+    html += '<div class="quick-card"><div style="font-size:12px;color:var(--ink-soft);">店舗</div>'+
+      '<div style="font-size:19px;font-weight:800;">'+escapeHtml(store.name)+'</div>'+
+      '<div style="font-size:12px;color:var(--ink-soft);margin-top:4px;">機械の故障は、各機械のQRコードから報告してください。ここは水漏れ・停電など、機械以外のことを報告する画面です。</div></div>';
+
+    if(quickReportDone === "event"){
+      html += '<div class="quick-success">報告しました。本部で確認します。ご協力ありがとうございました。</div>';
+    }
+
+    html += '<div class="quick-card">'+
+      '<h3 style="margin:0 0 12px;font-size:14px;font-weight:700;">状況を報告する</h3>'+
+      field("区分","category","select", EVENT_CATS.map(function(c){ return {v:c,l:c}; }), EVENT_CATS[0])+
+      '<div class="field" style="margin:12px 0;"><label>内容</label><textarea data-field="description" placeholder="例：トイレ前の床に水が広がっている"></textarea></div>'+
+      '<div class="field" style="margin-bottom:16px;"><label>報告者（任意）</label><input type="text" data-field="reporter" placeholder="例：◯◯警備 山田"></div>'+
+      '<div class="form-actions"><button class="btn primary" data-action="save-store-event-quick" data-id="'+escapeHtml(store.id)+'" style="width:100%;justify-content:center;">報告する</button></div>'+
+    '</div>';
+
+    var open = openEventsOf(store);
+    if(open.length){
+      html += '<div class="quick-card"><h3 style="margin:0 0 10px;font-size:13px;">いま対応中の出来事</h3><div class="repair-list">'+
+        open.slice(0, 5).map(function(e){
+          return '<div class="repair-item"><div class="r-top"><span class="badge st-warn">'+escapeHtml(e.category || "出来事")+'</span><span class="r-date mono">'+escapeHtml(fmtDateTime(e.occurredAt))+'</span></div>'+
+            (e.description ? '<div class="r-desc">'+escapeHtml(e.description)+'</div>' : '')+'</div>';
+        }).join("")+
+      '</div></div>';
+    }
+    document.getElementById("mainArea").innerHTML = html + openFullLink + '</div>';
+  }
 
   function renderQuickReport(){
     var container = document.getElementById("app");
@@ -1968,10 +2197,95 @@
   }
 
   /* ---------------- bulk import: many stores at once (store list screen) ---------------- */
+  function pendingModelCorrections(){
+    var out = [];
+    MODEL_CORRECTIONS.forEach(function(c){
+      var key = normalizeStoreKey(c[0]);
+      storesMap.forEach(function(s){
+        if(normalizeStoreKey(s.name) !== key) return;
+        machinesMap.forEach(function(m){
+          if(m.storeId === s.id && normalizeMachineNoKey(m.machineNo) === normalizeMachineNoKey(c[1]) && m.model === c[2]){
+            out.push({ id:m.id, to:c[3], label:c[0] + " No." + c[1] + "：" + c[2] + " → " + c[3] });
+          }
+        });
+      });
+    });
+    return out;
+  }
+
   function initialStoreCount(){
     var n = [];
     INITIAL_DATA.forEach(function(r){ if(n.indexOf(r[0]) === -1) n.push(r[0]); });
     return n.length;
+  }
+
+  function sleep(ms){ return new Promise(function(r){ setTimeout(r, ms); }); }
+  function isNetworkError(e){
+    return /Failed to fetch|NetworkError|Load failed|fetch failed|network/i.test(errText(e));
+  }
+  async function withRetry(fn){
+    var delays = [800, 2000, 4000];
+    for(var attempt=0;;attempt++){
+      try{ return await fn(); }
+      catch(e){
+        if(!isNetworkError(e) || attempt >= delays.length) throw e;
+        await sleep(delays[attempt]);
+      }
+    }
+  }
+
+  // Create a store unless one with the same name already exists (safe to retry after a dropped connection)
+  async function ensureStoreId(name, order){
+    var key = normalizeStoreKey(name);
+    async function findByName(){
+      var docs = await withRetry(function(){ return db.collection("stores").list(); });
+      for(var i=0;i<docs.length;i++){
+        if(normalizeStoreKey(docs[i].data().name) === key) return docs[i].id;
+      }
+      return null;
+    }
+    var found = await findByName();
+    if(found) return found;
+    for(var attempt=0; attempt<4; attempt++){
+      try{
+        var added = await db.collection("stores").add({ name: name, order: order });
+        return added.id;
+      }catch(e){
+        if(!isNetworkError(e) || attempt === 3) throw e;
+        await sleep(1000 * (attempt + 1));
+        var again = await findByName();     // the request may have gone through even though the reply was lost
+        if(again) return again;
+      }
+    }
+  }
+
+  // Insert machines for a store, skipping machine numbers that already exist (safe to retry)
+  async function insertMachinesIdempotent(storeId, rows, base, seqStart){
+    for(var attempt=0; attempt<4; attempt++){
+      var all = await withRetry(function(){ return db.collection("machines").list(); });
+      var have = {};
+      all.forEach(function(d){
+        var v = d.data();
+        if(v.storeId === storeId){ var k = normalizeMachineNoKey(v.machineNo); if(k) have[k] = true; }
+      });
+      var seq = seqStart;
+      var payloads = rows.filter(function(r){
+        var k = normalizeMachineNoKey(r.machineNo);
+        return !(k && have[k]);
+      }).map(function(r){
+        return {
+          storeId: storeId, type: r.type, machineNo: r.machineNo, model: r.model, serial: r.serial,
+          capacityKg: r.capacity, status: "normal", installDate: r.installDate || "", notes: r.notes,
+          repairs: [], createdAt: base + (seq++), updatedAt: base
+        };
+      });
+      if(!payloads.length) return;
+      try{ await db.collection("machines").addMany(payloads); return; }
+      catch(e){
+        if(!isNetworkError(e) || attempt === 3) throw e;
+        await sleep(1000 * (attempt + 1));
+      }
+    }
   }
 
   function normalizeStoreKey(s){
@@ -2088,6 +2402,7 @@
       var maxOrder = 0;
       storesMap.forEach(function(s){ if((s.order || 0) > maxOrder) maxOrder = s.order; });
       var base = Date.now(), seq = 0;
+      refetchSuspended = true;   // avoid a burst of refetches while writing many rows
       try{
         for(var i=0;i<plan.length;i++){
           var p = plan[i];
@@ -2096,28 +2411,25 @@
           if(p.action === "existing"){ storeId = p.store.id; }
           else if(p.action === "rename"){
             storeId = p.store.id;
-            await db.collection("stores").doc(storeId).update({ name: p.group.name });
+            await withRetry(function(){ return db.collection("stores").doc(storeId).update({ name: p.group.name }); });
           } else {
             maxOrder++;
-            var added = await db.collection("stores").add({ name: p.group.name, order: maxOrder });
-            storeId = added.id;
+            storeId = await ensureStoreId(p.group.name, maxOrder);
           }
           if(p.add.length){
-            var payloads = p.add.map(function(r){
-              return {
-                storeId: storeId, type: r.type, machineNo: r.machineNo, model: r.model, serial: r.serial,
-                capacityKg: r.capacity, status: "normal", installDate: r.installDate || "", notes: r.notes,
-                repairs: [], createdAt: base + (seq++), updatedAt: base
-              };
-            });
-            await db.collection("machines").addMany(payloads);
+            await insertMachinesIdempotent(storeId, p.add, base, seq);
+            seq += p.add.length;
           }
         }
+        refetchSuspended = false;
+        Object.keys(refetchers).forEach(function(k){ refetchers[k](); });
         close();
         alert("登録が完了しました。");
       }catch(err){
         console.error(err);
-        alert("登録の途中で失敗しました。画面を再読み込みして登録状況を確認し、もう一度お試しください（登録済みの機械は自動でスキップされます）。\n\n原因：" + errText(err));
+        refetchSuspended = false;
+        Object.keys(refetchers).forEach(function(k){ refetchers[k](); });
+        alert("登録の途中で失敗しました。通信状態をご確認のうえ、もう一度お試しください（登録済みの店舗・機械は自動でスキップされるので、やり直しても重複しません）。\n\n原因：" + errText(err));
         runBtn.disabled = false;
         runBtn.textContent = "登録する";
       }
@@ -2177,13 +2489,25 @@
         ]);
       });
     });
-    if(rows.length === 1){ alert("この店舗にはまだ対応履歴がありません。"); return; }
+    var evRows = [["発生日時","区分","内容","状態","報告者","対応内容","解決日時","報告方法"]];
+    storeEvents(store).slice().sort(function(a,b){ return eventSortKey(b).localeCompare(eventSortKey(a)); }).forEach(function(e){
+      evRows.push([ fmtDateTime(e.occurredAt), e.category || "", e.description || "", e.status === "resolved" ? "解決済み" : "対応中",
+        e.reporter || "", e.responseNotes || "", fmtDateTime(e.resolvedAt), e.source === "qr" ? "QR" : "管理画面" ]);
+    });
+    if(rows.length === 1 && evRows.length === 1){ alert("この店舗にはまだ対応履歴や出来事がありません。"); return; }
     if(!window.XLSX){ alert("Excel出力機能の読み込みに失敗しました。通信状態を確認し、ページを再読み込みしてください。"); return; }
     try{
-      var ws = XLSX.utils.aoa_to_sheet(rows);
-      ws["!cols"] = headers.map(function(h){ return { wch: Math.max(10, h.length * 2) }; });
       var wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "対応履歴");
+      if(rows.length > 1){
+        var ws = XLSX.utils.aoa_to_sheet(rows);
+        ws["!cols"] = headers.map(function(h){ return { wch: Math.max(10, h.length * 2) }; });
+        XLSX.utils.book_append_sheet(wb, ws, "対応履歴");
+      }
+      if(evRows.length > 1){
+        var ws2 = XLSX.utils.aoa_to_sheet(evRows);
+        ws2["!cols"] = [{wch:18},{wch:16},{wch:40},{wch:10},{wch:14},{wch:30},{wch:18},{wch:10}];
+        XLSX.utils.book_append_sheet(wb, ws2, "店舗の出来事");
+      }
       var safeName = (store ? store.name : "店舗").replace(/[\\/:*?"<>|]/g, "_");
       var filename = safeName + "_対応履歴_" + new Date().toISOString().slice(0,10) + ".xlsx";
       XLSX.writeFile(wb, filename);
@@ -2425,6 +2749,19 @@
       showQrListModal(target.getAttribute("data-id"));
       return;
     }
+    if(action === "apply-corrections"){
+      var pendC = pendingModelCorrections();
+      if(!pendC.length || !db) return;
+      if(!confirm("機械の型番の読み取りミス "+pendC.length+"件を訂正します。\n\n"+pendC.map(function(p){ return p.label; }).join("\n")+"\n\nよろしいですか？")) return;
+      try{
+        for(var ci=0;ci<pendC.length;ci++){
+          var pc = pendC[ci];
+          await withRetry(function(){ return db.collection("machines").doc(pc.id).update({ model: pc.to, updatedAt: Date.now() }); });
+        }
+        alert("訂正しました。");
+      }catch(err){ console.error(err); alert("訂正に失敗しました。\n\n原因：" + errText(err)); }
+      return;
+    }
     if(action === "load-initial-data"){
       loadInitialData();
       return;
@@ -2535,8 +2872,89 @@
       renderErrorCodes();
       return;
     }
+    if(action === "toggle-add-event"){ addingEvent = !addingEvent; editingEventId = null; renderDetail(); return; }
+    if(action === "cancel-event-form"){ addingEvent = false; editingEventId = null; renderDetail(); return; }
+    if(action === "edit-event"){ editingEventId = target.getAttribute("data-event-id"); addingEvent = false; renderDetail(); return; }
+    if(action === "save-event"){
+      var evPanel = target.closest(".panel");
+      var evVals = readFormValues(evPanel);
+      var evId = target.getAttribute("data-event-id");
+      var evCat = (evVals.category || "").trim();
+      var evDesc = (evVals.description || "").trim();
+      if(!evCat && !evDesc){ alert("区分または内容を入力してください。"); return; }
+      if(!db || !selectedStoreId) return;
+      var evResolved = evVals.status === "resolved";
+      try{
+        await updateStoreEvents(selectedStoreId, function(list){
+          if(evId){
+            return list.map(function(e){
+              if(e.id !== evId) return e;
+              return Object.assign({}, e, {
+                category: evCat, description: evDesc, occurredAt: evVals.occurredAt || e.occurredAt,
+                status: evResolved ? "resolved" : "open", reporter: evVals.reporter || "",
+                responseNotes: evVals.responseNotes || "",
+                resolvedAt: evResolved ? (evVals.resolvedAt || e.resolvedAt || nowLocalDatetime()) : ""
+              });
+            });
+          }
+          list.unshift({
+            id: genId(), category: evCat, description: evDesc, occurredAt: evVals.occurredAt || nowLocalDatetime(),
+            status: evResolved ? "resolved" : "open", reporter: evVals.reporter || "", responseNotes: evVals.responseNotes || "",
+            resolvedAt: evResolved ? (evVals.resolvedAt || nowLocalDatetime()) : "", createdAt: Date.now(), source: "hq"
+          });
+          return list;
+        });
+        addingEvent = false; editingEventId = null;
+      }catch(err){ console.error(err); alert("保存に失敗しました。\n\n原因：" + errText(err) + eventErrHint(err)); }
+      renderDetail();
+      return;
+    }
+    if(action === "resolve-event" || action === "reopen-event"){
+      var toId = target.getAttribute("data-event-id");
+      var makeResolved = (action === "resolve-event");
+      if(!db || !selectedStoreId) return;
+      try{
+        await updateStoreEvents(selectedStoreId, function(list){
+          return list.map(function(e){
+            if(e.id !== toId) return e;
+            return Object.assign({}, e, makeResolved
+              ? { status: "resolved", resolvedAt: nowLocalDatetime() }
+              : { status: "open", resolvedAt: "" });
+          });
+        });
+      }catch(err){ console.error(err); alert("更新に失敗しました。\n\n原因：" + errText(err) + eventErrHint(err)); }
+      return;
+    }
+    if(action === "delete-event"){
+      var delId = target.getAttribute("data-event-id");
+      if(!db || !selectedStoreId) return;
+      if(!confirm("この出来事を削除しますか？（取り消せません）")) return;
+      try{
+        await updateStoreEvents(selectedStoreId, function(list){ return list.filter(function(e){ return e.id !== delId; }); });
+      }catch(err){ console.error(err); alert("削除に失敗しました。\n\n原因：" + errText(err) + eventErrHint(err)); }
+      return;
+    }
+    if(action === "save-store-event-quick"){
+      var qsId = target.getAttribute("data-id");
+      var qsVals = readFormValues(target.closest(".quick-card"));
+      var qsDesc = (qsVals.description || "").trim();
+      if(!qsDesc){ alert("内容を入力してください。"); return; }
+      if(!db) return;
+      try{
+        await updateStoreEvents(qsId, function(list){
+          list.unshift({
+            id: genId(), category: qsVals.category || "その他", description: qsDesc, occurredAt: nowLocalDatetime(),
+            status: "open", reporter: qsVals.reporter || "", responseNotes: "", resolvedAt: "", createdAt: Date.now(), source: "qr"
+          });
+          return list;
+        });
+        quickReportDone = "event";
+      }catch(err){ console.error(err); alert("報告の送信に失敗しました。もう一度お試しください。\n\n原因：" + errText(err) + eventErrHint(err)); }
+      render();
+      return;
+    }
     if(action === "open-full-app"){
-      view = "grid"; selectedStoreId = null; quickReport = null;
+      view = "grid"; selectedStoreId = null; quickReport = null; quickStore = null;
       quickReportDone = null; quickShowExtraForm = false;
       try{ history.replaceState(null, "", location.pathname); }catch(e){}
       render();

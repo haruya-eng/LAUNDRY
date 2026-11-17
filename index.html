@@ -379,6 +379,15 @@
   .event-item{ border:1px solid var(--line); border-left:4px solid var(--warn); border-radius:8px; padding:10px 12px; margin-bottom:8px; background:var(--panel); }
   .event-item.resolved{ border-left-color:var(--ok); opacity:.85; }
   .ev-actions{ display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; }
+  .ev-timeline{ margin:8px 0 2px 2px; padding-left:12px; border-left:2px solid var(--line); display:flex; flex-direction:column; gap:7px; }
+  .ev-step{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:12.5px; }
+  .ev-vendor{ font-weight:800; }
+  .ev-notes{ color:var(--ink-soft); }
+  .ev-src{ font-size:11px; color:var(--ink-faint); }
+  .quick-label{ font-size:12.5px; font-weight:700; color:var(--ink-soft); margin:14px 2px 6px; }
+  .link-btn{ border:none; background:none; padding:0; cursor:pointer; color:var(--brand); text-align:left; }
+  .link-btn:hover{ text-decoration:underline; }
+  .chip[data-action="filter-events-state"].active{ background:var(--brand); }
   .qr-print-title{ position:relative; }
   .qr-store-qr{ position:absolute; right:0; top:50%; transform:translateY(-50%); display:flex; flex-direction:column; align-items:center; gap:2px; }
   .qr-store-qr .qr-grid-box canvas, .qr-store-qr .qr-grid-box img{ width:46px !important; height:46px !important; }
@@ -446,6 +455,7 @@
     <div class="tabs">
       <button class="tab" data-tab="grid">店舗一覧</button>
       <button class="tab" data-tab="history">対応履歴（全店舗）</button>
+      <button class="tab" data-tab="events">店舗の出来事</button>
       <button class="tab" data-tab="errorcodes">エラーコード表</button>
     </div>
     <div class="search" id="searchWrap">
@@ -516,6 +526,9 @@
   var quickStore = null;        // {storeId} when opened from a store-level QR
   var addingEvent = false;
   var editingEventId = null;
+  var respondingEvent = null;   // {id, kind} while the 対応 form is open
+  var eventsStateFilter = null; // 店舗の出来事タブ: new | working | resolved
+  var eventsStoreFilter = "";
   var errorCodesMap = new Map();
   var addingErrorCode = false;
   var editingErrorCode = null;
@@ -1201,6 +1214,8 @@
       renderDetail();
     } else if(view === "history"){
       renderHistory();
+    } else if(view === "events"){
+      renderEventsHistory();
     } else if(view === "errorcodes"){
       renderErrorCodes();
     } else {
@@ -1222,7 +1237,7 @@
       t.classList.toggle("active", tv === view || (tv === "grid" && view === "detail"));
     });
     var wrap = document.getElementById("searchWrap");
-    wrap.style.display = (view === "history" || view === "errorcodes") ? "none" : "flex";
+    wrap.style.display = (view === "history" || view === "errorcodes" || view === "events") ? "none" : "flex";
   }
 
   function renderSummary(){
@@ -1658,15 +1673,53 @@
 
   /* ---------------- store-level events (水漏れ・停電 など、機械以外の出来事) ---------------- */
   var EVENT_CATS = ["水漏れ","停電","空調・照明の不具合","防犯・いたずら","清掃・ごみ","お客様対応","その他"];
+  var EVENT_STATE = {
+    "new":      { label:"未対応", css:"st-broken" },
+    "working":  { label:"対応中", css:"st-progress" },
+    "resolved": { label:"対応済", css:"st-normal" }
+  };
 
   function storeEvents(store){ return (store && Array.isArray(store.events)) ? store.events : []; }
   function openEventsOf(store){ return storeEvents(store).filter(function(e){ return e.status !== "resolved"; }); }
-  function eventSortKey(e){ return String(e.occurredAt || "") ; }
+  function eventSortKey(e){ return String(e.occurredAt || ""); }
+
+  // 対応の記録（業者・本部が残す「対応中」「対応済」）。古い順に並べて返す
+  function eventResponses(ev){
+    var r = Array.isArray(ev && ev.responses) ? ev.responses.slice() : [];
+    r.sort(function(a,b){
+      var c = String(a.at || "").localeCompare(String(b.at || ""));
+      return c !== 0 ? c : ((a.createdAt||0) - (b.createdAt||0));
+    });
+    return r;
+  }
+  // 未対応（まだ対応の記録がない）／対応中（記録あり・完了前）／対応済
+  function eventState(ev){
+    if(ev.status === "resolved") return "resolved";
+    return eventResponses(ev).length ? "working" : "new";
+  }
+  function deriveEventStatus(responses){
+    var rs = responses.slice().sort(function(a,b){
+      var c = String(a.at || "").localeCompare(String(b.at || ""));
+      return c !== 0 ? c : ((a.createdAt||0) - (b.createdAt||0));
+    });
+    var last = rs.length ? rs[rs.length - 1] : null;
+    return last && last.kind === "done" ? { status:"resolved", resolvedAt:last.at } : { status:"open", resolvedAt:"" };
+  }
+
   function allOpenEvents(){
     var out = [];
     storesMap.forEach(function(s){
       openEventsOf(s).forEach(function(e){ out.push({ store:s, ev:e }); });
     });
+    out.sort(function(a,b){
+      var c = eventSortKey(b.ev).localeCompare(eventSortKey(a.ev));
+      return c !== 0 ? c : ((b.ev.createdAt||0) - (a.ev.createdAt||0));
+    });
+    return out;
+  }
+  function allEvents(){
+    var out = [];
+    storesMap.forEach(function(s){ storeEvents(s).forEach(function(e){ out.push({ store:s, ev:e }); }); });
     out.sort(function(a,b){
       var c = eventSortKey(b.ev).localeCompare(eventSortKey(a.ev));
       return c !== 0 ? c : ((b.ev.createdAt||0) - (a.ev.createdAt||0));
@@ -1685,6 +1738,20 @@
       ? "\n\n※Supabaseの stores テーブルに「events」列がありません。ご案内のSQLを実行してください。" : "";
   }
 
+  function rememberGet(k){ try{ return localStorage.getItem(k) || ""; }catch(e){ return ""; } }
+  function rememberSet(k, v){ try{ if(v) localStorage.setItem(k, v); }catch(e){} }
+
+  function knownVendors(){
+    var seen = {}, out = [];
+    function add(v){ v = String(v || "").trim(); if(v && !seen[v]){ seen[v] = true; out.push(v); } }
+    storesMap.forEach(function(s){ storeEvents(s).forEach(function(e){ eventResponses(e).forEach(function(r){ add(r.vendor); }); }); });
+    machinesMap.forEach(function(m){ (Array.isArray(m.repairs) ? m.repairs : []).forEach(function(r){ add(r.vendorName); }); });
+    return out;
+  }
+  function vendorDatalist(){
+    return '<datalist id="vendorList">'+knownVendors().map(function(v){ return '<option value="'+escapeHtml(v)+'">'; }).join("")+'</datalist>';
+  }
+
   // read the latest events from the DB, apply the change, write them back
   async function updateStoreEvents(storeId, mutate){
     var snap = await withRetry(function(){ return db.collection("stores").doc(storeId).get(); });
@@ -1694,11 +1761,45 @@
     await withRetry(function(){ return db.collection("stores").doc(storeId).update({ events: next }); });
   }
 
+  // add one 対応中 / 対応済 record to an event; "対応済" closes it, "対応中" keeps/reopens it
+  async function appendEventResponse(storeId, eventId, resp){
+    await updateStoreEvents(storeId, function(list){
+      return list.map(function(e){
+        if(e.id !== eventId) return e;
+        var responses = Array.isArray(e.responses) ? e.responses.slice() : [];
+        responses.push(resp);
+        var d = deriveEventStatus(responses);
+        return Object.assign({}, e, { responses: responses, status: d.status, resolvedAt: d.resolvedAt });
+      });
+    });
+  }
+
   function buildStoreReportUrl(storeId){
     return location.origin + location.pathname + "?report=store&store=" + encodeURIComponent(storeId);
   }
 
-  function renderEventForm(ev, storeId){
+  function renderTimeline(ev, deletable){
+    var rs = eventResponses(ev);
+    if(!rs.length) return "";
+    return '<div class="ev-timeline">'+rs.map(function(r){
+      var done = r.kind === "done";
+      return '<div class="ev-step">'+
+        '<span class="badge '+(done ? "st-normal" : "st-progress")+'">'+(done ? "対応済" : "対応中")+'</span>'+
+        '<span class="r-date mono">'+escapeHtml(fmtDateTime(r.at))+'</span>'+
+        (r.vendor ? '<b class="ev-vendor">'+escapeHtml(r.vendor)+'</b>' : '')+
+        (r.notes ? '<span class="ev-notes">'+escapeHtml(r.notes)+'</span>' : '')+
+        (r.source === "qr" ? '<span class="ev-src">QRから</span>' : '')+
+        (deletable ? '<button class="icon-btn" data-action="delete-event-response" data-event-id="'+escapeHtml(ev.id)+'" data-response-id="'+escapeHtml(r.id)+'" title="この記録を削除">'+iconTrash()+'</button>' : '')+
+      '</div>';
+    }).join("")+'</div>';
+  }
+
+  function eventStateBadge(ev){
+    var st = EVENT_STATE[eventState(ev)];
+    return '<span class="badge '+st.css+'">'+st.label+'</span>';
+  }
+
+  function renderEventForm(ev){
     var isEdit = !!ev; ev = ev || {};
     return '<div class="panel" style="background:var(--panel-2);">'+
       '<h3>'+(isEdit ? "出来事を編集" : "出来事を追加")+'</h3>'+
@@ -1706,15 +1807,28 @@
         '<div class="field"><label>区分</label><input type="text" list="eventCats" data-field="category" value="'+escapeHtml(ev.category || "")+'" placeholder="例：水漏れ">'+
           '<datalist id="eventCats">'+EVENT_CATS.map(function(c){ return '<option value="'+c+'">'; }).join("")+'</datalist></div>'+
         field("発生日時","occurredAt","datetime-local", null, ev.occurredAt || nowLocalDatetime())+
-        field("状態","status","select", [{v:"open",l:"対応中"},{v:"resolved",l:"解決済み"}], ev.status === "resolved" ? "resolved" : "open")+
-        field("報告者","reporter","text", null, ev.reporter || "")+
-        field("解決日時","resolvedAt","datetime-local", null, ev.resolvedAt || "")+
+        field("報告者","reporter","text", null, ev.reporter || rememberGet("laundry_reporter"))+
       '</div>'+
-      '<div class="field" style="margin-bottom:10px;"><label>内容</label><textarea data-field="description" placeholder="例：トイレ前の床に水が広がっている">'+escapeHtml(ev.description || "")+'</textarea></div>'+
-      '<div class="field" style="margin-bottom:14px;"><label>対応内容</label><textarea data-field="responseNotes" placeholder="例：業者に連絡、止水栓を閉めた">'+escapeHtml(ev.responseNotes || "")+'</textarea></div>'+
+      '<div class="field" style="margin-bottom:14px;"><label>内容</label><textarea data-field="description" placeholder="例：トイレ前の床に水が広がっている">'+escapeHtml(ev.description || "")+'</textarea></div>'+
       '<div class="form-actions">'+
         '<button class="btn ghost" data-action="cancel-event-form">キャンセル</button>'+
         '<button class="btn primary" data-action="save-event" data-event-id="'+escapeHtml(ev.id || "")+'">'+(isEdit ? "保存" : "追加する")+'</button>'+
+      '</div>'+
+    '</div>';
+  }
+
+  function renderResponseForm(ev, kind){
+    return '<div class="panel resp-form" style="background:var(--panel-2);margin:10px 0 0;">'+
+      '<h3 style="margin-bottom:10px;">'+(kind === "done" ? "対応済を記録" : "対応中を記録")+'</h3>'+
+      '<div class="form-grid">'+
+        field("種別","kind","select", [{v:"progress",l:"対応中（手配・訪問予定など）"},{v:"done",l:"対応済（完了）"}], kind === "done" ? "done" : "progress")+
+        field("日時","at","datetime-local", null, nowLocalDatetime())+
+        '<div class="field"><label>業者名・対応者</label><input type="text" list="vendorList" data-field="vendor" value="'+escapeHtml(rememberGet("laundry_vendor"))+'" placeholder="例：◯◯設備">'+vendorDatalist()+'</div>'+
+      '</div>'+
+      '<div class="field" style="margin-bottom:12px;"><label>内容</label><textarea data-field="notes" placeholder="例：業者に連絡、11/20に訪問予定／排水管を修理して完了"></textarea></div>'+
+      '<div class="form-actions">'+
+        '<button class="btn ghost" data-action="cancel-response-form">キャンセル</button>'+
+        '<button class="btn primary" data-action="save-event-response" data-event-id="'+escapeHtml(ev.id)+'">保存</button>'+
       '</div>'+
     '</div>';
   }
@@ -1728,33 +1842,35 @@
     });
     var openCnt = openEventsOf(store).length;
     var html = '<div class="panel events-panel">'+
-      '<div class="events-head"><h3 style="margin:0;">店舗の出来事'+(openCnt ? '<span class="live-count">対応中 '+openCnt+'件</span>' : '')+'</h3>'+
+      '<div class="events-head"><h3 style="margin:0;">店舗の出来事'+(openCnt ? '<span class="live-count">対応が必要 '+openCnt+'件</span>' : '')+'</h3>'+
         '<button class="btn small" data-action="toggle-add-event">＋ 出来事を追加</button></div>';
-    if(addingEvent) html += renderEventForm(null, store.id);
+    if(addingEvent) html += renderEventForm(null);
     if(!evs.length && !addingEvent){
       html += '<div class="no-repairs">いま記録されている出来事はありません。水漏れ・停電・いたずらなど、機械以外のことを記録できます。</div>';
     }
     html += evs.map(function(ev){
-      if(editingEventId === ev.id) return renderEventForm(ev, store.id);
+      if(editingEventId === ev.id) return renderEventForm(ev);
       var resolved = ev.status === "resolved";
+      var responding = respondingEvent && respondingEvent.id === ev.id;
       return '<div class="event-item'+(resolved ? " resolved" : "")+'">'+
-        '<div class="r-top"><span><span class="badge st-warn">'+escapeHtml(ev.category || "出来事")+'</span> '+
-          '<span class="badge '+(resolved ? "st-normal" : "st-progress")+'">'+(resolved ? "解決済み" : "対応中")+'</span></span>'+
+        '<div class="r-top"><span><span class="badge st-warn">'+escapeHtml(ev.category || "出来事")+'</span> '+eventStateBadge(ev)+'</span>'+
           '<span class="r-date mono">'+escapeHtml(fmtDateTime(ev.occurredAt))+'</span></div>'+
         (ev.description ? '<div class="r-desc">'+escapeHtml(ev.description)+'</div>' : '')+
         '<div class="r-foot">'+
           (ev.reporter ? '<span>報告: '+escapeHtml(ev.reporter)+'</span>' : '')+
-          (ev.responseNotes ? '<span>対応: '+escapeHtml(ev.responseNotes)+'</span>' : '')+
-          (resolved && ev.resolvedAt ? '<span>解決: '+escapeHtml(fmtDateTime(ev.resolvedAt))+'</span>' : '')+
           (ev.source === "qr" ? '<span>QRから報告</span>' : '')+
+          (!eventResponses(ev).length && ev.responseNotes ? '<span>対応: '+escapeHtml(ev.responseNotes)+'</span>' : '')+
         '</div>'+
-        '<div class="ev-actions">'+
-          (resolved
-            ? '<button class="btn small" data-action="reopen-event" data-event-id="'+escapeHtml(ev.id)+'">対応中に戻す</button>'
-            : '<button class="btn small primary" data-action="resolve-event" data-event-id="'+escapeHtml(ev.id)+'">解決済みにする</button>')+
-          '<button class="btn small ghost" data-action="edit-event" data-event-id="'+escapeHtml(ev.id)+'">編集</button>'+
-          '<button class="btn small ghost" data-action="delete-event" data-event-id="'+escapeHtml(ev.id)+'">削除</button>'+
-        '</div>'+
+        renderTimeline(ev, true)+
+        (responding ? renderResponseForm(ev, respondingEvent.kind) :
+          '<div class="ev-actions">'+
+            (resolved
+              ? '<button class="btn small" data-action="respond-event" data-event-id="'+escapeHtml(ev.id)+'" data-kind="progress">対応を追加（再対応）</button>'
+              : '<button class="btn small" data-action="respond-event" data-event-id="'+escapeHtml(ev.id)+'" data-kind="progress">対応中を記録</button>'+
+                '<button class="btn small primary" data-action="respond-event" data-event-id="'+escapeHtml(ev.id)+'" data-kind="done">対応済にする</button>')+
+            '<button class="btn small ghost" data-action="edit-event" data-event-id="'+escapeHtml(ev.id)+'">編集</button>'+
+            '<button class="btn small ghost" data-action="delete-event" data-event-id="'+escapeHtml(ev.id)+'">削除</button>'+
+          '</div>')+
       '</div>';
     }).join("");
     return html + '</div>';
@@ -1770,6 +1886,7 @@
         return '<button class="live-row" data-action="open-store" data-id="'+escapeHtml(x.store.id)+'">'+
           '<span class="live-store">'+escapeHtml(x.store.name)+'</span>'+
           '<span class="badge st-warn">'+escapeHtml(x.ev.category || "出来事")+'</span>'+
+          eventStateBadge(x.ev)+
           '<span class="live-desc">'+escapeHtml(x.ev.description || "")+'</span>'+
           '<span class="live-date mono">'+escapeHtml(fmtDateTime(x.ev.occurredAt))+'</span>'+
         '</button>';
@@ -1778,12 +1895,95 @@
     '</div>';
   }
 
+  // 「店舗の出来事」タブ：全店舗の出来事と、その対応の履歴
+  function renderEventsHistory(){
+    var all = allEvents();
+    var counts = { "new":0, working:0, resolved:0 };
+    all.forEach(function(x){ counts[eventState(x.ev)]++; });
+    var rows = all.filter(function(x){
+      return (!eventsStateFilter || eventState(x.ev) === eventsStateFilter) && (!eventsStoreFilter || x.store.id === eventsStoreFilter);
+    });
+    var storeOptions = storesSorted().map(function(s){
+      return '<option value="'+escapeHtml(s.id)+'"'+(eventsStoreFilter === s.id ? " selected" : "")+'>'+escapeHtml(s.name)+'</option>';
+    }).join("");
+    var chips = ["new","working","resolved"].map(function(k){
+      return '<button class="chip'+(eventsStateFilter === k ? " active" : "")+'" data-action="filter-events-state" data-state="'+k+'">'+
+        '<span class="n">'+counts[k]+'</span>'+EVENT_STATE[k].label+'</button>';
+    }).join("");
+    var filters = '<div class="history-filters">'+
+      '<select id="eventsStoreSelect" class="btn small" style="padding:8px 10px;"><option value="">すべての店舗</option>'+storeOptions+'</select>'+
+      chips+
+      '<button class="btn small" data-action="export-events-excel" style="margin-left:auto;">'+iconExcel()+' Excelで出力</button>'+
+    '</div>';
+    var list;
+    if(!rows.length){
+      list = '<div class="empty-note">該当する出来事がありません。</div>';
+    } else {
+      list = '<div class="repair-list">'+rows.map(function(x){
+        var ev = x.ev;
+        return '<div class="event-item'+(ev.status === "resolved" ? " resolved" : "")+'">'+
+          '<div class="r-top"><span><button class="live-store link-btn" data-action="open-store" data-id="'+escapeHtml(x.store.id)+'">'+escapeHtml(x.store.name)+'</button> '+
+            '<span class="badge st-warn">'+escapeHtml(ev.category || "出来事")+'</span> '+eventStateBadge(ev)+'</span>'+
+            '<span class="r-date mono">'+escapeHtml(fmtDateTime(ev.occurredAt))+'</span></div>'+
+          (ev.description ? '<div class="r-desc">'+escapeHtml(ev.description)+'</div>' : '')+
+          '<div class="r-foot">'+
+            (ev.reporter ? '<span>報告: '+escapeHtml(ev.reporter)+'</span>' : '')+
+            (ev.source === "qr" ? '<span>QRから報告</span>' : '')+
+          '</div>'+
+          renderTimeline(ev, false)+
+        '</div>';
+      }).join("")+'</div>';
+    }
+    document.getElementById("mainArea").innerHTML = filters + list;
+    var sel = document.getElementById("eventsStoreSelect");
+    if(sel) sel.addEventListener("change", function(){ eventsStoreFilter = sel.value; renderEventsHistory(); });
+  }
+
+  // Excel: 出来事の一覧＋対応の履歴（1行1回の対応）
+  function buildEventSheets(wb, pairs, withStore){
+    var sorted = pairs.slice().sort(function(a,b){ return eventSortKey(b.ev).localeCompare(eventSortKey(a.ev)); });
+    var h1 = (withStore ? ["店舗名"] : []).concat(["発生日時","区分","内容","状態","報告者","報告方法","最新の対応日時","最新の業者名・対応者","最新の対応内容","対応済の日時"]);
+    var h2 = (withStore ? ["店舗名"] : []).concat(["発生日時","区分","内容","対応日時","対応種別","業者名・対応者","対応内容"]);
+    var r1 = [h1], r2 = [h2];
+    sorted.forEach(function(p){
+      var e = p.ev, rs = eventResponses(e), last = rs.length ? rs[rs.length - 1] : null;
+      var pre = withStore ? [p.store.name] : [];
+      r1.push(pre.concat([
+        fmtDateTime(e.occurredAt), e.category || "", e.description || "", EVENT_STATE[eventState(e)].label, e.reporter || "", e.source === "qr" ? "QR" : "管理画面",
+        last ? fmtDateTime(last.at) : "", last ? (last.vendor || "") : "", last ? (last.notes || "") : (e.responseNotes || ""),
+        e.status === "resolved" ? fmtDateTime(e.resolvedAt || (last && last.at)) : ""
+      ]));
+      rs.forEach(function(r){
+        r2.push(pre.concat([ fmtDateTime(e.occurredAt), e.category || "", e.description || "", fmtDateTime(r.at), r.kind === "done" ? "対応済" : "対応中", r.vendor || "", r.notes || "" ]));
+      });
+    });
+    var w1 = XLSX.utils.aoa_to_sheet(r1);
+    w1["!cols"] = h1.map(function(h){ return { wch: Math.max(12, h.length * 2) }; });
+    XLSX.utils.book_append_sheet(wb, w1, "店舗の出来事");
+    if(r2.length > 1){
+      var w2 = XLSX.utils.aoa_to_sheet(r2);
+      w2["!cols"] = h2.map(function(h){ return { wch: Math.max(12, h.length * 2) }; });
+      XLSX.utils.book_append_sheet(wb, w2, "出来事の対応履歴");
+    }
+  }
+
+  function exportAllEventsExcel(){
+    var pairs = allEvents();
+    if(!pairs.length){ alert("まだ出来事が記録されていません。"); return; }
+    if(!window.XLSX){ alert("Excel出力機能の読み込みに失敗しました。ページを再読み込みしてください。"); return; }
+    try{
+      var wb = XLSX.utils.book_new();
+      buildEventSheets(wb, pairs, true);
+      XLSX.writeFile(wb, "店舗の出来事_履歴_" + new Date().toISOString().slice(0,10) + ".xlsx");
+    }catch(err){ console.error(err); alert("Excelの作成に失敗しました。\n\n原因：" + errText(err)); }
+  }
+
   function renderStoreReport(){
     var qs = quickStore || {};
     var store = storesMap.get(qs.storeId);
     var openFullLink = '<div class="quick-link"><button class="btn ghost" data-action="open-full-app">管理画面全体を開く</button></div>';
     var html = '<div class="quick-wrap">'+
-      '<div class="quick-header"><div class="dial" aria-hidden="true" style="width:32px;height:32px;"></div><h1 style="font-size:17px;">店舗の状況を報告</h1></div>';
+      '<div class="quick-header"><div class="dial" aria-hidden="true" style="width:32px;height:32px;"></div><h1 style="font-size:17px;">店舗の状況</h1></div>';
 
     if(!dbEverLoaded()){
       html += '<div class="quick-card"><p style="color:var(--ink-soft);font-size:13.5px;">読み込み中です…</p></div>';
@@ -1798,29 +1998,44 @@
 
     html += '<div class="quick-card"><div style="font-size:12px;color:var(--ink-soft);">店舗</div>'+
       '<div style="font-size:19px;font-weight:800;">'+escapeHtml(store.name)+'</div>'+
-      '<div style="font-size:12px;color:var(--ink-soft);margin-top:4px;">機械の故障は、各機械のQRコードから報告してください。ここは水漏れ・停電など、機械以外のことを報告する画面です。</div></div>';
+      '<div style="font-size:12px;color:var(--ink-soft);margin-top:4px;">機械の故障は、各機械のQRコードから報告してください。ここは水漏れ・停電など、機械以外のことを報告・対応する画面です。</div></div>';
 
     if(quickReportDone === "event"){
       html += '<div class="quick-success">報告しました。本部で確認します。ご協力ありがとうございました。</div>';
+    } else if(quickReportDone === "response"){
+      html += '<div class="quick-success">対応中として記録しました。ありがとうございました。</div>';
+    } else if(quickReportDone === "response_done"){
+      html += '<div class="quick-success">対応済として記録しました。ご対応ありがとうございました。</div>';
     }
-
-    html += '<div class="quick-card">'+
-      '<h3 style="margin:0 0 12px;font-size:14px;font-weight:700;">状況を報告する</h3>'+
-      field("区分","category","select", EVENT_CATS.map(function(c){ return {v:c,l:c}; }), EVENT_CATS[0])+
-      '<div class="field" style="margin:12px 0;"><label>内容</label><textarea data-field="description" placeholder="例：トイレ前の床に水が広がっている"></textarea></div>'+
-      '<div class="field" style="margin-bottom:16px;"><label>報告者（任意）</label><input type="text" data-field="reporter" placeholder="例：◯◯警備 山田"></div>'+
-      '<div class="form-actions"><button class="btn primary" data-action="save-store-event-quick" data-id="'+escapeHtml(store.id)+'" style="width:100%;justify-content:center;">報告する</button></div>'+
-    '</div>';
 
     var open = openEventsOf(store);
     if(open.length){
-      html += '<div class="quick-card"><h3 style="margin:0 0 10px;font-size:13px;">いま対応中の出来事</h3><div class="repair-list">'+
-        open.slice(0, 5).map(function(e){
-          return '<div class="repair-item"><div class="r-top"><span class="badge st-warn">'+escapeHtml(e.category || "出来事")+'</span><span class="r-date mono">'+escapeHtml(fmtDateTime(e.occurredAt))+'</span></div>'+
-            (e.description ? '<div class="r-desc">'+escapeHtml(e.description)+'</div>' : '')+'</div>';
-        }).join("")+
-      '</div></div>';
+      html += '<div class="quick-label">いま対応が必要な出来事（対応した方は、ここから記録してください）</div>';
+      open.forEach(function(e){
+        html += '<div class="quick-card">'+
+          '<div class="r-top"><span><span class="badge st-warn">'+escapeHtml(e.category || "出来事")+'</span> '+eventStateBadge(e)+'</span>'+
+            '<span class="r-date mono">'+escapeHtml(fmtDateTime(e.occurredAt))+'</span></div>'+
+          (e.description ? '<div class="r-desc" style="margin-top:6px;">'+escapeHtml(e.description)+'</div>' : '')+
+          renderTimeline(e, false)+
+          '<div class="form-grid" style="margin-top:12px;">'+
+            field("種別","kind","select", [{v:"progress",l:"対応中（手配・訪問予定など）"},{v:"done",l:"対応済（完了）"}], "progress")+
+            '<div class="field"><label>業者名・対応者</label><input type="text" list="vendorList" data-field="vendor" value="'+escapeHtml(rememberGet("laundry_vendor"))+'" placeholder="例：◯◯設備"></div>'+
+          '</div>'+
+          '<div class="field" style="margin-bottom:12px;"><label>内容</label><textarea data-field="notes" placeholder="例：11/20に訪問予定／排水管を修理して完了"></textarea></div>'+
+          '<div class="form-actions"><button class="btn primary" data-action="save-event-response-quick" data-id="'+escapeHtml(store.id)+'" data-event-id="'+escapeHtml(e.id)+'" style="width:100%;justify-content:center;">対応を記録する</button></div>'+
+        '</div>';
+      });
+      html += vendorDatalist();
     }
+
+    html += '<div class="quick-label">'+(open.length ? '別の出来事を報告する' : '状況を報告する')+'</div>'+
+      '<div class="quick-card">'+
+      field("区分","category","select", EVENT_CATS.map(function(c){ return {v:c,l:c}; }), EVENT_CATS[0])+
+      '<div class="field" style="margin:12px 0;"><label>内容</label><textarea data-field="description" placeholder="例：トイレ前の床に水が広がっている"></textarea></div>'+
+      '<div class="field" style="margin-bottom:16px;"><label>報告者（任意）</label><input type="text" data-field="reporter" value="'+escapeHtml(rememberGet("laundry_reporter"))+'" placeholder="例：◯◯警備 山田"></div>'+
+      '<div class="form-actions"><button class="btn primary" data-action="save-store-event-quick" data-id="'+escapeHtml(store.id)+'" style="width:100%;justify-content:center;">報告する</button></div>'+
+    '</div>';
+
     document.getElementById("mainArea").innerHTML = html + openFullLink + '</div>';
   }
 
@@ -2489,12 +2704,8 @@
         ]);
       });
     });
-    var evRows = [["発生日時","区分","内容","状態","報告者","対応内容","解決日時","報告方法"]];
-    storeEvents(store).slice().sort(function(a,b){ return eventSortKey(b).localeCompare(eventSortKey(a)); }).forEach(function(e){
-      evRows.push([ fmtDateTime(e.occurredAt), e.category || "", e.description || "", e.status === "resolved" ? "解決済み" : "対応中",
-        e.reporter || "", e.responseNotes || "", fmtDateTime(e.resolvedAt), e.source === "qr" ? "QR" : "管理画面" ]);
-    });
-    if(rows.length === 1 && evRows.length === 1){ alert("この店舗にはまだ対応履歴や出来事がありません。"); return; }
+    var evPairs = storeEvents(store).map(function(e){ return { store: store, ev: e }; });
+    if(rows.length === 1 && !evPairs.length){ alert("この店舗にはまだ対応履歴や出来事がありません。"); return; }
     if(!window.XLSX){ alert("Excel出力機能の読み込みに失敗しました。通信状態を確認し、ページを再読み込みしてください。"); return; }
     try{
       var wb = XLSX.utils.book_new();
@@ -2503,11 +2714,7 @@
         ws["!cols"] = headers.map(function(h){ return { wch: Math.max(10, h.length * 2) }; });
         XLSX.utils.book_append_sheet(wb, ws, "対応履歴");
       }
-      if(evRows.length > 1){
-        var ws2 = XLSX.utils.aoa_to_sheet(evRows);
-        ws2["!cols"] = [{wch:18},{wch:16},{wch:40},{wch:10},{wch:14},{wch:30},{wch:18},{wch:10}];
-        XLSX.utils.book_append_sheet(wb, ws2, "店舗の出来事");
-      }
+      if(evPairs.length) buildEventSheets(wb, evPairs, false);
       var safeName = (store ? store.name : "店舗").replace(/[\\/:*?"<>|]/g, "_");
       var filename = safeName + "_対応履歴_" + new Date().toISOString().slice(0,10) + ".xlsx";
       XLSX.writeFile(wb, filename);
@@ -2707,6 +2914,7 @@
       selectedStoreId = target.getAttribute("data-id");
       view = "detail";
       addingMachine = false; editingMachineId = null; expandedMachines = new Set(); addingRepairFor = null; editingCaseId = null;
+      addingEvent = false; editingEventId = null; respondingEvent = null;
       render();
       return;
     }
@@ -2872,35 +3080,42 @@
       renderErrorCodes();
       return;
     }
-    if(action === "toggle-add-event"){ addingEvent = !addingEvent; editingEventId = null; renderDetail(); return; }
+    if(action === "toggle-add-event"){ addingEvent = !addingEvent; editingEventId = null; respondingEvent = null; renderDetail(); return; }
     if(action === "cancel-event-form"){ addingEvent = false; editingEventId = null; renderDetail(); return; }
-    if(action === "edit-event"){ editingEventId = target.getAttribute("data-event-id"); addingEvent = false; renderDetail(); return; }
+    if(action === "edit-event"){ editingEventId = target.getAttribute("data-event-id"); addingEvent = false; respondingEvent = null; renderDetail(); return; }
+    if(action === "respond-event"){
+      respondingEvent = { id: target.getAttribute("data-event-id"), kind: target.getAttribute("data-kind") || "progress" };
+      addingEvent = false; editingEventId = null;
+      renderDetail();
+      return;
+    }
+    if(action === "cancel-response-form"){ respondingEvent = null; renderDetail(); return; }
+    if(action === "filter-events-state"){
+      var fs = target.getAttribute("data-state");
+      eventsStateFilter = (eventsStateFilter === fs) ? null : fs;
+      renderEventsHistory();
+      return;
+    }
+    if(action === "export-events-excel"){ exportAllEventsExcel(); return; }
     if(action === "save-event"){
-      var evPanel = target.closest(".panel");
-      var evVals = readFormValues(evPanel);
+      var evVals = readFormValues(target.closest(".panel"));
       var evId = target.getAttribute("data-event-id");
       var evCat = (evVals.category || "").trim();
       var evDesc = (evVals.description || "").trim();
       if(!evCat && !evDesc){ alert("区分または内容を入力してください。"); return; }
       if(!db || !selectedStoreId) return;
-      var evResolved = evVals.status === "resolved";
+      rememberSet("laundry_reporter", evVals.reporter || "");
       try{
         await updateStoreEvents(selectedStoreId, function(list){
           if(evId){
             return list.map(function(e){
               if(e.id !== evId) return e;
-              return Object.assign({}, e, {
-                category: evCat, description: evDesc, occurredAt: evVals.occurredAt || e.occurredAt,
-                status: evResolved ? "resolved" : "open", reporter: evVals.reporter || "",
-                responseNotes: evVals.responseNotes || "",
-                resolvedAt: evResolved ? (evVals.resolvedAt || e.resolvedAt || nowLocalDatetime()) : ""
-              });
+              return Object.assign({}, e, { category: evCat, description: evDesc, occurredAt: evVals.occurredAt || e.occurredAt, reporter: evVals.reporter || "" });
             });
           }
           list.unshift({
             id: genId(), category: evCat, description: evDesc, occurredAt: evVals.occurredAt || nowLocalDatetime(),
-            status: evResolved ? "resolved" : "open", reporter: evVals.reporter || "", responseNotes: evVals.responseNotes || "",
-            resolvedAt: evResolved ? (evVals.resolvedAt || nowLocalDatetime()) : "", createdAt: Date.now(), source: "hq"
+            status: "open", reporter: evVals.reporter || "", responses: [], resolvedAt: "", createdAt: Date.now(), source: "hq"
           });
           return list;
         });
@@ -2909,26 +3124,43 @@
       renderDetail();
       return;
     }
-    if(action === "resolve-event" || action === "reopen-event"){
-      var toId = target.getAttribute("data-event-id");
-      var makeResolved = (action === "resolve-event");
+    if(action === "save-event-response"){
+      var rVals = readFormValues(target.closest(".resp-form"));
+      var rEventId = target.getAttribute("data-event-id");
       if(!db || !selectedStoreId) return;
+      if(!(rVals.notes || "").trim() && !(rVals.vendor || "").trim()){ alert("業者名・対応者か、内容のどちらかを入力してください。"); return; }
+      rememberSet("laundry_vendor", rVals.vendor || "");
+      try{
+        await appendEventResponse(selectedStoreId, rEventId, {
+          id: genId(), kind: rVals.kind === "done" ? "done" : "progress", at: rVals.at || nowLocalDatetime(),
+          vendor: (rVals.vendor || "").trim(), notes: (rVals.notes || "").trim(), createdAt: Date.now(), source: "hq"
+        });
+        respondingEvent = null;
+      }catch(err){ console.error(err); alert("保存に失敗しました。\n\n原因：" + errText(err) + eventErrHint(err)); }
+      renderDetail();
+      return;
+    }
+    if(action === "delete-event-response"){
+      var dEventId = target.getAttribute("data-event-id");
+      var dRespId = target.getAttribute("data-response-id");
+      if(!db || !selectedStoreId) return;
+      if(!confirm("この対応の記録を削除しますか？（取り消せません）")) return;
       try{
         await updateStoreEvents(selectedStoreId, function(list){
           return list.map(function(e){
-            if(e.id !== toId) return e;
-            return Object.assign({}, e, makeResolved
-              ? { status: "resolved", resolvedAt: nowLocalDatetime() }
-              : { status: "open", resolvedAt: "" });
+            if(e.id !== dEventId) return e;
+            var responses = (Array.isArray(e.responses) ? e.responses : []).filter(function(r){ return r.id !== dRespId; });
+            var d = deriveEventStatus(responses);
+            return Object.assign({}, e, { responses: responses, status: d.status, resolvedAt: d.resolvedAt });
           });
         });
-      }catch(err){ console.error(err); alert("更新に失敗しました。\n\n原因：" + errText(err) + eventErrHint(err)); }
+      }catch(err){ console.error(err); alert("削除に失敗しました。\n\n原因：" + errText(err) + eventErrHint(err)); }
       return;
     }
     if(action === "delete-event"){
       var delId = target.getAttribute("data-event-id");
       if(!db || !selectedStoreId) return;
-      if(!confirm("この出来事を削除しますか？（取り消せません）")) return;
+      if(!confirm("この出来事を、対応の記録ごと削除しますか？（取り消せません）")) return;
       try{
         await updateStoreEvents(selectedStoreId, function(list){ return list.filter(function(e){ return e.id !== delId; }); });
       }catch(err){ console.error(err); alert("削除に失敗しました。\n\n原因：" + errText(err) + eventErrHint(err)); }
@@ -2940,16 +3172,35 @@
       var qsDesc = (qsVals.description || "").trim();
       if(!qsDesc){ alert("内容を入力してください。"); return; }
       if(!db) return;
+      rememberSet("laundry_reporter", qsVals.reporter || "");
       try{
         await updateStoreEvents(qsId, function(list){
           list.unshift({
             id: genId(), category: qsVals.category || "その他", description: qsDesc, occurredAt: nowLocalDatetime(),
-            status: "open", reporter: qsVals.reporter || "", responseNotes: "", resolvedAt: "", createdAt: Date.now(), source: "qr"
+            status: "open", reporter: qsVals.reporter || "", responses: [], resolvedAt: "", createdAt: Date.now(), source: "qr"
           });
           return list;
         });
         quickReportDone = "event";
       }catch(err){ console.error(err); alert("報告の送信に失敗しました。もう一度お試しください。\n\n原因：" + errText(err) + eventErrHint(err)); }
+      render();
+      return;
+    }
+    if(action === "save-event-response-quick"){
+      var qrId = target.getAttribute("data-id");
+      var qrEventId = target.getAttribute("data-event-id");
+      var qrVals = readFormValues(target.closest(".quick-card"));
+      var qrKind = qrVals.kind === "done" ? "done" : "progress";
+      if(!(qrVals.notes || "").trim() && !(qrVals.vendor || "").trim()){ alert("業者名・対応者か、内容のどちらかを入力してください。"); return; }
+      if(!db) return;
+      rememberSet("laundry_vendor", qrVals.vendor || "");
+      try{
+        await appendEventResponse(qrId, qrEventId, {
+          id: genId(), kind: qrKind, at: nowLocalDatetime(),
+          vendor: (qrVals.vendor || "").trim(), notes: (qrVals.notes || "").trim(), createdAt: Date.now(), source: "qr"
+        });
+        quickReportDone = qrKind === "done" ? "response_done" : "response";
+      }catch(err){ console.error(err); alert("記録の送信に失敗しました。もう一度お試しください。\n\n原因：" + errText(err) + eventErrHint(err)); }
       render();
       return;
     }
